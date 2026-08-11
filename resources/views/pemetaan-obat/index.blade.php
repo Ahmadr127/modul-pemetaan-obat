@@ -3,7 +3,7 @@
 @section('title', 'Pemetaan Obat')
 
 @section('content')
-<div class="space-y-5" x-data="mappingModal({{ Js::from($pemetaanMap ?? []) }})">
+<div class="space-y-5" x-data="mappingModal({{ Js::from($pemetaanMap ?? []) }})" @open-edit.window="openEdit($event.detail.id)">
 
     {{-- Pilih Obat Generik --}}
     <x-card>
@@ -101,7 +101,7 @@
                         <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-600">Rp {{ number_format($p->obatBrand->harga_jual ?? 0, 0, ',', '.') }}</td>
                         <td class="px-4 py-3 whitespace-nowrap">
                             <x-actions>
-                                <x-actions-item icon="bi-pencil" label="Edit Mapping" @click="openEdit({{ $p->id }})" />
+                                <x-actions-item icon="bi-pencil" label="Edit Mapping" @click="$dispatch('open-edit', { id: {{ $p->id }} })" />
                                 <x-actions-form action="{{ route('pemetaan-obat.destroy', $p) }}" method="DELETE"
                                     icon="bi-trash" label="Hapus Mapping"
                                     color="text-gray-700 hover:bg-red-50 hover:text-red-600"

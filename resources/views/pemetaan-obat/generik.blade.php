@@ -3,7 +3,7 @@
 @section('title', 'Data Obat Generik')
 
 @section('content')
-<div class="space-y-5" x-data="generikModal({{ Js::from($generikMap) }})">
+<div class="space-y-5" x-data="generikModal({{ Js::from($generikMap) }})" @open-edit.window="openEdit($event.detail.id)">
 
     <div class="grid grid-cols-1 lg:grid-cols-12 gap-5">
 
@@ -51,7 +51,7 @@
                         </td>
                         <td class="px-4 py-3 whitespace-nowrap">
                             <x-actions>
-                                <x-actions-item icon="bi-pencil" label="Edit" @click="openEdit({{ $g->id }})" />
+                                <x-actions-item icon="bi-pencil" label="Edit" @click="$dispatch('open-edit', { id: {{ $g->id }} })" />
                                 <x-actions-form action="{{ route('pemetaan-obat.generik.destroy', $g) }}" method="DELETE"
                                     icon="bi-trash" label="Hapus"
                                     color="text-gray-700 hover:bg-red-50 hover:text-red-600"

@@ -229,9 +229,9 @@
         </div>
     </div>
 
-    {{-- Load Alpine.js (self-hosted, tanpa CDN) AFTER sidebar component is defined --}}
-    <script defer src="{{ asset('js/alpine.min.js') }}"></script>
-    
+    {{-- Alpine.js: script klasik lokal (CDN build auto-start) --}}
+    <script defer src="{{ asset('js/alpine.min.js') }}?v=3"></script>
+
     <script src="{{ asset('js/chart.umd.min.js') }}"></script>
     <script src="{{ asset('js/toast.js') }}"></script>
     <script>

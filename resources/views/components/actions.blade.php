@@ -4,11 +4,15 @@
     'menuClass' => 'w-40',
 ])
 
+{{--
+    Dropdown aksi. State dropdown memakai nama unik "menuOpen" agar tidak
+    bertabrakan (scope isolation) dengan variabel "open" milik modal halaman.
+--}}
 <div
     x-data="dropdownMenu({ align: '{{ $align }}' })"
     class="relative inline-block"
-    @click.outside="open = false"
-    @keydown.escape.window="open = false"
+    @click.outside="menuOpen = false"
+    @keydown.escape.window="menuOpen = false"
 >
     <button
         type="button"
@@ -22,7 +26,7 @@
 
     {{-- Dropdown menu: fixed positioning agar tidak terpotong overflow table --}}
     <div
-        x-show="open"
+        x-show="menuOpen"
         x-ref="menu"
         x-cloak
         x-transition:enter="transition ease-out duration-100"
@@ -31,7 +35,7 @@
         x-transition:leave="transition ease-in duration-75"
         x-transition:leave-start="opacity-100 scale-100"
         x-transition:leave-end="opacity-0 scale-95"
-        @click="open = false"
+        @click="menuOpen = false"
         :style="`top: ${position.top}px; left: ${position.left}px;`"
         class="fixed z-30 mt-1 {{ $menuClass }} bg-white border border-gray-200 rounded-lg shadow-lg py-1"
     >
@@ -44,13 +48,13 @@
 <script>
 document.addEventListener('alpine:init', () => {
     Alpine.data('dropdownMenu', (config = {}) => ({
-        open: false,
+        menuOpen: false,
         align: config.align || 'right',
         position: { top: 0, left: 0 },
 
         toggle() {
-            this.open = !this.open;
-            if (this.open) {
+            this.menuOpen = !this.menuOpen;
+            if (this.menuOpen) {
                 this.$nextTick(() => this.updatePosition());
             }
         },

@@ -3,7 +3,7 @@
 @section('title', 'Data Obat Brand')
 
 @section('content')
-<div class="space-y-5" x-data="brandModal({{ Js::from($brandMap) }})">
+<div class="space-y-5" x-data="brandModal({{ Js::from($brandMap) }})" @open-edit.window="openEdit($event.detail.id)">
 
     <div class="grid grid-cols-1 lg:grid-cols-12 gap-5">
 
@@ -46,7 +46,7 @@
                         <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-600">Rp {{ number_format($b->harga_jual ?? 0, 0, ',', '.') }}</td>
                         <td class="px-4 py-3 whitespace-nowrap">
                             <x-actions>
-                                <x-actions-item icon="bi-pencil" label="Edit" @click="openEdit({{ $b->id }})" />
+                                <x-actions-item icon="bi-pencil" label="Edit" @click="$dispatch('open-edit', { id: {{ $b->id }} })" />
                                 <x-actions-form action="{{ route('pemetaan-obat.brand.destroy', $b) }}" method="DELETE"
                                     icon="bi-trash" label="Hapus"
                                     color="text-gray-700 hover:bg-red-50 hover:text-red-600"
