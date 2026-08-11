@@ -3,7 +3,19 @@
 @section('title', 'Manajemen Role')
 
 @section('content')
-<div class="space-y-5" x-data="roleEditModal()">
+@php
+    $roleDataMap = collect($roles->items())->mapWithKeys(fn($role) => [
+        $role->id => [
+            'id' => $role->id,
+            'name' => $role->name,
+            'display_name' => $role->display_name,
+            'description' => $role->description,
+            'is_active' => (bool) $role->is_active,
+            'permissions' => $role->permissions->pluck('id')->map(fn($id) => (string) $id)->values(),
+        ],
+    ])->all();
+@endphp
+<div class="space-y-5" x-data="roleEditModal({{ Js::from($roleDataMap) }})">
 
     {{-- Stats --}}
     <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -83,16 +95,6 @@
 
                 <x-table :columns="['No', 'Nama Role', 'Deskripsi', 'Total User', 'Status', 'Aksi']" :pagination="$roles" class="border-0 rounded-none shadow-none">
                     @foreach($roles as $role)
-                    @php
-                        $roleData = [
-                            'id' => $role->id,
-                            'name' => $role->name,
-                            'display_name' => $role->display_name,
-                            'description' => $role->description,
-                            'is_active' => (bool) $role->is_active,
-                            'permissions' => $role->permissions->pluck('id')->map(fn($id) => (string) $id)->values(),
-                        ];
-                    @endphp
                     <tr class="hover:bg-gray-50 transition-colors">
                         <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-500">{{ $loop->iteration }}</td>
                         <td class="px-4 py-3 whitespace-nowrap">
@@ -115,7 +117,7 @@
                         </td>
                         <td class="px-4 py-3 whitespace-nowrap">
                             <x-actions>
-                                <x-actions-item icon="bi-pencil" label="Edit" @click="openEdit({{ Js::from($roleData) }})" />
+                                <x-actions-item icon="bi-pencil" label="Edit" @click="openEdit({{ $role->id }})" />
                                 <x-actions-form
                                     action="{{ route('roles.destroy', $role) }}"
                                     method="DELETE"
@@ -155,8 +157,8 @@
                 <input type="hidden" name="_method" value="PUT">
                 @csrf
 
-                <x-input x-model="name" name="name" label="Nama Role" :required="true" />
-                <x-input x-model="displayName" name="display_name" label="Display Name" :required="true" />
+                <x-input x-model="name" id="edit-name" name="name" label="Nama Role" :required="true" />
+                <x-input x-model="displayName" id="edit-display-name" name="display_name" label="Display Name" :required="true" />
 
                 <div class="mb-3">
                     <label for="edit_description" class="block text-sm font-semibold text-sp-navy mb-1">Deskripsi</label>
@@ -206,7 +208,8 @@
 @push('scripts')
 <script>
 document.addEventListener('alpine:init', () => {
-    Alpine.data('roleEditModal', () => ({
+    Alpine.data('roleEditModal', (initialRoles = {}) => ({
+        roles: initialRoles,
         open: false,
         action: '',
         name: '',
@@ -215,7 +218,10 @@ document.addEventListener('alpine:init', () => {
         isActive: 1,
         permissions: [],
 
-        openEdit(role) {
+        openEdit(id) {
+            const role = this.roles[id];
+            if (!role) return;
+
             this.action = '{{ url('roles') }}/' + role.id;
             this.name = role.name;
             this.displayName = role.display_name;
