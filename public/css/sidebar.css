@@ -1,0 +1,138 @@
+/**
+ * Sidebar Mechanics - Collapse width, transitions, text hiding
+ * All theming/colors are handled by Tailwind utilities in resources/css/app.css
+ */
+
+/* CSS Variables for sidebar width */
+:root {
+    --sidebar-width: 215px; /* Default: expanded */
+    --sidebar-collapsed-width: 55px; /* Collapsed (mini) */
+    --sidebar-transition: width 300ms ease-in-out;
+}
+
+/* Prevent FOUC/flicker: hide dropdowns until Alpine is ready */
+[x-cloak] { 
+    display: none !important; 
+}
+
+/* But sidebar should be visible immediately on desktop */
+@media (min-width: 1024px) {
+    .sidebar[x-cloak] {
+        display: flex !important;
+    }
+}
+
+/* Global overflow prevention */
+html, body {
+    overflow-x: hidden;
+    max-width: 100%;
+}
+
+/* Sidebar base styles with CSS-driven width */
+.sidebar {
+    width: var(--sidebar-width);
+    transition: var(--sidebar-transition);
+    will-change: width;
+}
+
+/* When collapsed class is on html, sidebar is narrow */
+.sidebar-collapsed .sidebar {
+    width: var(--sidebar-collapsed-width);
+}
+
+/* Text visibility using opacity instead of x-show (no DOM detach) */
+.sidebar-text {
+    opacity: 1;
+    transition: opacity 150ms ease-in-out;
+    white-space: nowrap;
+    overflow: hidden;
+}
+
+.sidebar-collapsed .sidebar-text {
+    opacity: 0;
+    width: 0;
+    visibility: hidden;
+}
+
+/* Icon margin adjustment when collapsed */
+.sidebar-icon {
+    transition: margin 150ms ease-in-out;
+}
+
+.sidebar-collapsed .sidebar-icon {
+    margin-right: 0 !important;
+}
+
+/* Hide dropdown submenus when collapsed to prevent icon cutoff/overlap */
+.sidebar-collapsed .sidebar-submenu {
+    display: none !important;
+}
+
+/* Hide group titles when collapsed */
+.sidebar-collapsed .sidebar-title {
+    display: none;
+}
+
+/* Hide brand logo when collapsed */
+.sidebar-collapsed .sidebar-brand-logo {
+    display: none;
+}
+
+/* Collapsed header like Simmutu mini mode */
+.sidebar-collapsed .sidebar-header {
+    padding: 1rem 0.5rem;
+    justify-content: center;
+}
+
+/* Collapsed: center icons (Simmutu mini padding) */
+.sidebar-collapsed .sidebar-link,
+.sidebar-collapsed .sidebar-btn {
+    justify-content: center;
+    gap: 0;
+    padding: 0.7rem 0.5rem;
+}
+
+/* Custom Scrollbar for Sidebar */
+.sidebar-scroll::-webkit-scrollbar {
+    width: 6px;
+}
+
+.sidebar-scroll::-webkit-scrollbar-track {
+    background: rgba(0, 0, 0, 0.03);
+    border-radius: 10px;
+}
+
+.sidebar-scroll::-webkit-scrollbar-thumb {
+    background: rgba(0, 0, 0, 0.15);
+    border-radius: 10px;
+}
+
+.sidebar-scroll::-webkit-scrollbar-thumb:hover {
+    background: rgba(0, 0, 0, 0.25);
+}
+
+/* For Firefox */
+.sidebar-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(0, 0, 0, 0.15) rgba(0, 0, 0, 0.03);
+}
+
+/* Mobile sidebar - use transform for slide */
+@media (max-width: 1023px) {
+    .sidebar {
+        transform: translateX(-100%);
+        transition: transform 300ms ease-in-out;
+        width: 215px !important; /* Always full width on mobile */
+    }
+    
+    .sidebar.mobile-open {
+        transform: translateX(0);
+    }
+}
+
+/* Desktop: sidebar is always visible, just changes width */
+@media (min-width: 1024px) {
+    .sidebar {
+        transform: translateX(0) !important;
+    }
+}
