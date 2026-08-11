@@ -22,10 +22,10 @@
         <table class="w-full text-sm min-w-max">
             <thead>
                 {{-- Baris pertama: judul kolom + pencarian per kolom --}}
-                <tr class="bg-gray-100">
+                <tr class="bg-sp-primary/10">
                     <template x-for="col in columns" :key="col.key">
                         <th class="px-4 py-2.5 text-left align-top whitespace-nowrap">
-                            <span class="block font-semibold text-gray-700" x-text="col.label"></span>
+                            <span class="block font-semibold text-sp-navy" x-text="col.label"></span>
                             <div class="relative mt-1">
                                 <i class="bi bi-search absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 text-xs pointer-events-none"></i>
                                 <input

@@ -18,31 +18,37 @@ class RolePermissionSeeder extends Seeder
             ['name' => 'manage_users', 'display_name' => 'Kelola Users', 'description' => 'Mengelola pengguna'],
             ['name' => 'manage_organization_types', 'display_name' => 'Kelola Tipe Organisasi', 'description' => 'Mengelola tipe organisasi'],
             ['name' => 'manage_organization_units', 'display_name' => 'Kelola Unit Organisasi', 'description' => 'Mengelola unit organisasi'],
+            ['name' => 'manage_pemetaan_obat', 'display_name' => 'Kelola Pemetaan Obat', 'description' => 'Mengelola pemetaan obat generik dan brand'],
         ];
 
         foreach ($permissions as $permission) {
-            Permission::create($permission);
+            Permission::updateOrCreate(
+                ['name' => $permission['name']],
+                $permission
+            );
         }
 
         // Create Roles
-        $adminRole = Role::create([
-            'name' => 'admin',
-            'display_name' => 'Administrator',
-            'description' => 'Role dengan akses penuh ke sistem'
-        ]);
+        $adminRole = Role::updateOrCreate(
+            ['name' => 'admin'],
+            [
+                'display_name' => 'Administrator',
+                'description' => 'Role dengan akses penuh ke sistem'
+            ]
+        );
 
-
-        $userRole = Role::create([
-            'name' => 'user',
-            'display_name' => 'Pengguna',
-            'description' => 'Role untuk pengguna umum'
-        ]);
+        $userRole = Role::updateOrCreate(
+            ['name' => 'user'],
+            [
+                'display_name' => 'Pengguna',
+                'description' => 'Role untuk pengguna umum'
+            ]
+        );
 
         // Assign permissions to roles
-        $adminRole->permissions()->attach(Permission::all()); // Admin gets all permissions
-        
-        
-        $userRole->permissions()->attach(
+        $adminRole->permissions()->syncWithoutDetaching(Permission::all());
+
+        $userRole->permissions()->syncWithoutDetaching(
             Permission::whereIn('name', [
                 'view_dashboard'
             ])->get()

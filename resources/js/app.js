@@ -1,3 +1,6 @@
+import Alpine from 'alpinejs';
+window.Alpine = Alpine;
+
 import './bootstrap';
 
 document.addEventListener('alpine:init', () => {

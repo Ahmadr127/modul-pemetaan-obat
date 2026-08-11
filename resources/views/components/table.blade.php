@@ -14,9 +14,9 @@
     <div class="overflow-x-auto">
         <table class="w-full text-sm min-w-max">
             <thead>
-                <tr class="bg-gray-100">
+                <tr class="bg-sp-primary/10">
                     @foreach($columns as $column)
-                        <th class="px-4 py-2.5 text-left font-semibold text-gray-700 whitespace-nowrap">
+                        <th class="px-4 py-2.5 text-left font-semibold text-sp-navy whitespace-nowrap">
                             {{ is_array($column) ? ($column['label'] ?? '') : $column }}
                         </th>
                     @endforeach

@@ -14,7 +14,7 @@
         type="button"
         x-ref="trigger"
         @click="toggle()"
-        class="inline-flex items-center justify-center w-7 h-7 rounded-md text-gray-500 hover:bg-gray-100 hover:text-sp-navy transition-colors"
+        class="inline-flex items-center justify-center w-7 h-7 rounded-md text-sp-navy border border-gray-200 bg-white hover:bg-sp-primary/10 hover:border-sp-primary/30 hover:text-sp-primary transition-colors"
         title="Aksi"
     >
         <i class="bi {{ $triggerIcon }}"></i>

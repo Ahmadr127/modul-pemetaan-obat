@@ -8,6 +8,7 @@ use App\Http\Controllers\RoleController;
 use App\Http\Controllers\PermissionController;
 use App\Http\Controllers\OrganizationTypeController;
 use App\Http\Controllers\OrganizationUnitController;
+use App\Http\Controllers\PemetaanObatController;
 
 /*
 |--------------------------------------------------------------------------
@@ -71,6 +72,33 @@ Route::middleware('auth')->group(function () {
             ->name('organization-units.remove-member');
         Route::patch('organization-units/{organization_unit}/head', [OrganizationUnitController::class, 'updateHead'])
             ->name('organization-units.update-head');
+    });
+
+    // Pemetaan Obat routes
+    Route::middleware('permission:manage_pemetaan_obat')->group(function () {
+        Route::get('pemetaan-obat', [PemetaanObatController::class, 'index'])->name('pemetaan-obat.index');
+
+        // CRUD Obat Generik
+        Route::get('pemetaan-obat/obat-generik', [PemetaanObatController::class, 'generikIndex'])->name('pemetaan-obat.generik');
+        Route::post('pemetaan-obat/obat-generik', [PemetaanObatController::class, 'generikStore'])->name('pemetaan-obat.generik.store');
+        Route::put('pemetaan-obat/obat-generik/{obat_generik}', [PemetaanObatController::class, 'generikUpdate'])->name('pemetaan-obat.generik.update');
+        Route::delete('pemetaan-obat/obat-generik/{obat_generik}', [PemetaanObatController::class, 'generikDestroy'])->name('pemetaan-obat.generik.destroy');
+
+        // CRUD Obat Brand
+        Route::get('pemetaan-obat/obat-brand', [PemetaanObatController::class, 'brandIndex'])->name('pemetaan-obat.brand');
+        Route::post('pemetaan-obat/obat-brand', [PemetaanObatController::class, 'brandStore'])->name('pemetaan-obat.brand.store');
+        Route::put('pemetaan-obat/obat-brand/{obat_brand}', [PemetaanObatController::class, 'brandUpdate'])->name('pemetaan-obat.brand.update');
+        Route::delete('pemetaan-obat/obat-brand/{obat_brand}', [PemetaanObatController::class, 'brandDestroy'])->name('pemetaan-obat.brand.destroy');
+
+        // Search / autocomplete
+        Route::get('pemetaan-obat/generik/search', [PemetaanObatController::class, 'searchGenerik'])->name('pemetaan-obat.generik.search');
+        Route::get('pemetaan-obat/brand/search', [PemetaanObatController::class, 'searchBrand'])->name('pemetaan-obat.brand.search');
+        Route::get('pemetaan-obat/generik/{obat_generik}/brand', [PemetaanObatController::class, 'generikBrands'])->name('pemetaan-obat.generik.brand');
+
+        // CRUD pemetaan
+        Route::post('pemetaan-obat', [PemetaanObatController::class, 'store'])->name('pemetaan-obat.store');
+        Route::put('pemetaan-obat/{pemetaan}', [PemetaanObatController::class, 'update'])->name('pemetaan-obat.update');
+        Route::delete('pemetaan-obat/{pemetaan}', [PemetaanObatController::class, 'destroy'])->name('pemetaan-obat.destroy');
     });
 
 });

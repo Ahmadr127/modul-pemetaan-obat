@@ -88,4 +88,30 @@ return [
             ],
         ],
     ],
+    [
+        'title' => 'Pemetaan Obat',
+        'menus' => [
+            [
+                'label' => 'Pemetaan Obat',
+                'icon' => 'bi-diagram-3-fill',
+                'route' => 'pemetaan-obat.index',
+                'route_pattern' => 'pemetaan-obat.index',
+                'permission' => 'manage_pemetaan_obat',
+            ],
+            [
+                'label' => 'Obat Generik',
+                'icon' => 'bi-capsule',
+                'route' => 'pemetaan-obat.generik',
+                'route_pattern' => 'pemetaan-obat.generik',
+                'permission' => 'manage_pemetaan_obat',
+            ],
+            [
+                'label' => 'Obat Brand',
+                'icon' => 'bi-bag-check',
+                'route' => 'pemetaan-obat.brand',
+                'route_pattern' => 'pemetaan-obat.brand',
+                'permission' => 'manage_pemetaan_obat',
+            ],
+        ],
+    ],
 ];
