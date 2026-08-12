@@ -116,7 +116,7 @@
                             </span>
                         </td>
                         <td class="px-4 py-3 whitespace-nowrap">
-                            <x-actions>
+                            <x-actions count="2">
                                 <x-actions-item icon="bi-pencil" label="Edit" @click="openEdit({{ $role->id }})" />
                                 <x-actions-form
                                     action="{{ route('roles.destroy', $role) }}"

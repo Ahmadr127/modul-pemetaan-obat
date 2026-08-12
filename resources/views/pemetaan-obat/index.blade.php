@@ -100,7 +100,7 @@
                         <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-900">{{ $p->obatBrand->nama_brand }}</td>
                         <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-600">Rp {{ number_format($p->obatBrand->harga_jual ?? 0, 0, ',', '.') }}</td>
                         <td class="px-4 py-3 whitespace-nowrap">
-                            <x-actions>
+                            <x-actions count="2">
                                 <x-actions-item icon="bi-pencil" label="Edit Mapping" @click="$dispatch('open-edit', { id: {{ $p->id }} })" />
                                 <x-actions-form action="{{ route('pemetaan-obat.destroy', $p) }}" method="DELETE"
                                     icon="bi-trash" label="Hapus Mapping"

@@ -49,7 +49,7 @@
                 </td>
                 <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-500">{{ $user->created_at->format('d/m/Y H:i') }}</td>
                 <td class="px-4 py-3 whitespace-nowrap">
-                    <x-actions>
+                    <x-actions count="2">
                         <x-actions-item href="{{ route('users.edit', $user) }}" icon="bi-pencil" label="Edit" />
                         @if($user->id !== auth()->id())
                         <x-actions-form
@@ -61,7 +61,9 @@
                             confirm="Yakin ingin menghapus user ini?"
                         />
                         @else
-                        <div class="px-3 py-2 text-sm text-gray-400">(Akun Anda)</div>
+                        <span title="Akun Anda" class="inline-flex items-center justify-center w-7 h-7 rounded-md border border-gray-200 bg-gray-100 text-gray-400 cursor-not-allowed">
+                            <i class="bi bi-person"></i>
+                        </span>
                         @endif
                     </x-actions>
                 </td>

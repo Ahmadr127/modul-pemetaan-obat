@@ -1,6 +1,6 @@
 @extends('layouts.auth')
 
-@section('title', 'Login - Sistem')
+@section('title', 'Login - Sistem Pemetaan Obat')
 
 @section('content')
 <div class="min-h-screen w-full flex">
@@ -12,8 +12,8 @@
                 <div class="rounded-2xl border border-green-200 bg-white shadow-md p-4 mb-3">
                     <img src="{{ asset('images/logo.png') }}" alt="Logo" class="h-16 object-contain" />
                 </div>
-                <h2 class="text-2xl font-bold text-gray-800">Sistem</h2>
-                <p class="text-sm text-gray-600">Sistem Starterpack</p>
+                <h2 class="text-2xl font-bold text-gray-800">Sistem Pemetaan Obat</h2>
+                <p class="text-sm text-gray-600">Kelola data pemetaan obat dengan mudah</p>
             </div>
 
             <!-- Login Card -->
@@ -30,7 +30,7 @@
 
                     <!-- Email atau Username -->
                     <div>
-                        <label for="login" class="block text-sm font-semibold text-gray-700 mb-2">
+                        <label for="login" class="block text-sm font-semibold text-gray-700 mb-1">
                             <i class="fas fa-user mr-2 text-green-600"></i>Email atau Username
                         </label>
                         <input 
@@ -40,13 +40,13 @@
                             required 
                             placeholder="Masukkan email atau username Anda" 
                             value="{{ old('login') }}"
-                            class="w-full rounded-xl border-2 border-gray-200 px-4 py-3 bg-white text-gray-900 shadow-sm outline-none transition focus:ring-4 focus:ring-green-500/20 focus:border-green-600 hover:border-gray-300"
+                            class="w-full text-sm px-3 py-2 border rounded-md outline-none transition-colors bg-white placeholder-gray-400 text-gray-900 border-gray-300 focus:ring-2 focus:ring-green-500/20 focus:border-green-600"
                         />
                     </div>
 
                     <!-- Password -->
                     <div>
-                        <label for="password" class="block text-sm font-semibold text-gray-700 mb-2">
+                        <label for="password" class="block text-sm font-semibold text-gray-700 mb-1">
                             <i class="fas fa-lock mr-2 text-green-600"></i>Password
                         </label>
                         <div class="relative">
@@ -56,7 +56,7 @@
                                 type="password" 
                                 required 
                                 placeholder="Masukkan password Anda"
-                                class="w-full rounded-xl border-2 border-gray-200 px-4 py-3 pr-12 bg-white text-gray-900 shadow-sm outline-none transition focus:ring-4 focus:ring-green-500/20 focus:border-green-600 hover:border-gray-300"
+                                class="w-full text-sm px-3 py-2 pr-12 border rounded-md outline-none transition-colors bg-white placeholder-gray-400 text-gray-900 border-gray-300 focus:ring-2 focus:ring-green-500/20 focus:border-green-600"
                             />
                             <button 
                                 type="button" 
@@ -98,7 +98,7 @@
                     <!-- Submit Button -->
                     <button 
                         type="submit" 
-                        class="w-full rounded-xl bg-gradient-to-r from-green-600 to-green-700 text-white font-bold py-3.5 shadow-lg hover:shadow-xl transition-all duration-200 transform hover:-translate-y-0.5 focus:outline-none focus:ring-4 focus:ring-green-500/50"
+                        class="w-full inline-flex items-center justify-center gap-1.5 px-4 py-2 text-sm font-semibold text-white rounded-md bg-gradient-to-r from-green-600 to-green-700 shadow-lg hover:shadow-xl transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-green-500/50"
                     >
                         <i class="fas fa-sign-in-alt mr-2"></i>
                         Masuk
@@ -107,7 +107,7 @@
 
                 <!-- Footer -->
                 <div class="mt-6 text-center text-sm text-gray-500">
-                    <p>© {{ date('Y') }} Sistem. All rights reserved.</p>
+                    <p>© {{ date('Y') }} Sistem Pemetaan Obat. All rights reserved.</p>
                 </div>
             </div>
         </div>
@@ -129,9 +129,9 @@
             </div>
 
             <!-- App Name -->
-            <h1 class="text-5xl font-bold mb-4 text-center">Sistem</h1>
+            <h1 class="text-5xl font-bold mb-4 text-center">Sistem Pemetaan Obat</h1>
             <p class="text-xl text-green-100 text-center max-w-md">
-                Sistem Starterpack
+                Kelola data pemetaan obat dengan mudah
             </p>
         </div>
     </div>

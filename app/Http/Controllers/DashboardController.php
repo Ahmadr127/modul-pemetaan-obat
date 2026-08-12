@@ -2,11 +2,9 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\OrganizationUnit;
-use App\Models\Permission;
-use App\Models\Role;
-use App\Models\User;
-use Illuminate\Http\Request;
+use App\Models\ObatBrand;
+use App\Models\ObatGenerik;
+use App\Models\PemetaanObat;
 use Illuminate\Support\Facades\Auth;
 
 class DashboardController extends Controller
@@ -14,33 +12,26 @@ class DashboardController extends Controller
     public function index()
     {
         $user = Auth::user();
+        $hasAccess = $user->hasPermission('manage_pemetaan_obat');
 
-        $stats = [
-            ['label' => 'Pengguna', 'value' => User::count(), 'icon' => 'bi-people-fill', 'color' => 'bg-sp-primary'],
-            ['label' => 'Roles', 'value' => Role::count(), 'icon' => 'bi-person-fill-check', 'color' => 'bg-blue-500'],
-            ['label' => 'Permissions', 'value' => Permission::count(), 'icon' => 'bi-key-fill', 'color' => 'bg-purple-500'],
-            ['label' => 'Unit Organisasi', 'value' => OrganizationUnit::count(), 'icon' => 'bi-buildings-fill', 'color' => 'bg-emerald-500'],
-        ];
+        $stats = $hasAccess ? [
+            ['label' => 'Obat Generik', 'value' => ObatGenerik::count(), 'icon' => 'bi-capsule', 'color' => 'bg-sp-primary', 'link' => route('pemetaan-obat.generik')],
+            ['label' => 'Obat Brand', 'value' => ObatBrand::count(), 'icon' => 'bi-bag-check', 'color' => 'bg-blue-500', 'link' => route('pemetaan-obat.brand')],
+            ['label' => 'Total Pemetaan', 'value' => PemetaanObat::count(), 'icon' => 'bi-diagram-3-fill', 'color' => 'bg-purple-500', 'link' => route('pemetaan-obat.index')],
+        ] : [];
 
-        // Chart data: pengguna baru per bulan (6 bulan terakhir)
-        $chartLabels = [];
-        $chartData = [];
-        for ($i = 5; $i >= 0; $i--) {
-            $chartLabels[] = now()->subMonths($i)->translatedFormat('M Y');
-            $chartData[] = User::whereBetween('created_at', [
-                now()->subMonths($i)->startOfMonth(),
-                now()->subMonths($i)->endOfMonth(),
-            ])->count();
-        }
+        // Chart: top obat generik berdasarkan jumlah brand yang terpetakan
+        $topGenerik = ObatGenerik::withCount('brand')->orderByDesc('brand_count')->limit(8)->get();
+        $chartLabels = $topGenerik->map(fn($g) => $g->nama_generik)->all();
+        $chartData = $topGenerik->map(fn($g) => $g->brand_count)->all();
 
-        // Data untuk tabel dengan pencarian per kolom
-        $tableRows = User::with('role')->limit(50)->get()->map(fn($u) => [
-            'name' => $u->name,
-            'nik' => $u->nik ?? '-',
-            'username' => $u->username,
-            'email' => $u->email,
-            'role' => $u->role->display_name ?? '-',
-            'created_at' => $u->created_at->format('d/m/Y'),
+        // Data untuk tabel pemetaan dengan pencarian per kolom
+        $tableRows = PemetaanObat::with('obatGenerik', 'obatBrand')->latest('updated_at')->limit(50)->get()->map(fn($p) => [
+            'kode' => $p->obatGenerik->kode_obat,
+            'generik' => $p->obatGenerik->nama_generik,
+            'brand' => $p->obatBrand->nama_brand,
+            'harga' => $p->obatBrand->harga_jual !== null ? 'Rp ' . number_format($p->obatBrand->harga_jual, 0, ',', '.') : '-',
+            'tanggal' => $p->created_at->format('d/m/Y'),
         ])->toArray();
 
         return view('dashboard', compact('user', 'stats', 'chartLabels', 'chartData', 'tableRows'));

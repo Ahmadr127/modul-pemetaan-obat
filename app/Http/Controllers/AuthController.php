@@ -49,8 +49,8 @@ class AuthController extends Controller
         // Manual login
         Auth::login($user);
         $request->session()->regenerate();
-        
-        return redirect()->intended('/dashboard');
+
+        return $this->homeRedirect($request);
     }
 
     public function register(Request $request)
@@ -77,7 +77,7 @@ class AuthController extends Controller
 
         Auth::login($user);
 
-        return redirect('/dashboard');
+        return $this->homeRedirect($request);
     }
 
     public function logout(Request $request)
@@ -86,5 +86,50 @@ class AuthController extends Controller
         $request->session()->invalidate();
         $request->session()->regenerateToken();
         return redirect('/login');
+    }
+
+    /**
+     * Arahkan user ke halaman pertama yang bisa diakses sesuai permission-nya.
+     */
+    protected function homeRedirect(Request $request)
+    {
+        $home = static::homePath();
+
+        if ($home) {
+            return redirect($home);
+        }
+
+        Auth::logout();
+        $request->session()->invalidate();
+        $request->session()->regenerateToken();
+
+        return redirect()->route('login')->withErrors([
+            'login' => 'Akun Anda tidak memiliki akses ke sistem.',
+        ]);
+    }
+
+    /**
+     * URL halaman pertama yang dapat diakses user berdasarkan permission-nya.
+     * Urutan prioritas: dashboard -> modul pemetaan obat -> pengelolaan data -> lainnya.
+     */
+    public static function homePath(): ?string
+    {
+        $permissionRoutes = [
+            'view_dashboard' => 'dashboard',
+            'manage_pemetaan_obat' => 'pemetaan-obat.index',
+            'manage_users' => 'users.index',
+            'manage_roles' => 'roles.index',
+            'manage_permissions' => 'permissions.index',
+            'manage_organization_units' => 'organization-units.index',
+            'manage_organization_types' => 'organization-types.index',
+        ];
+
+        foreach ($permissionRoutes as $permission => $route) {
+            if (Auth::user()->hasPermission($permission)) {
+                return route($route);
+            }
+        }
+
+        return null;
     }
 }

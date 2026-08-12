@@ -45,7 +45,7 @@
                         <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-900">{{ $b->nama_brand }}</td>
                         <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-600">Rp {{ number_format($b->harga_jual ?? 0, 0, ',', '.') }}</td>
                         <td class="px-4 py-3 whitespace-nowrap">
-                            <x-actions>
+                            <x-actions count="2">
                                 <x-actions-item icon="bi-pencil" label="Edit" @click="$dispatch('open-edit', { id: {{ $b->id }} })" />
                                 <x-actions-form action="{{ route('pemetaan-obat.brand.destroy', $b) }}" method="DELETE"
                                     icon="bi-trash" label="Hapus"

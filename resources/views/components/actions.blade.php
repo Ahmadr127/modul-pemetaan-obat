@@ -2,12 +2,21 @@
     'align' => 'right',
     'triggerIcon' => 'bi-three-dots-vertical',
     'menuClass' => 'w-40',
+    'count' => 0,
 ])
 
 {{--
-    Dropdown aksi. State dropdown memakai nama unik "menuOpen" agar tidak
+    Kolom aksi. Jika jumlah aksi hanya 1-2, tampilkan sebagai icon button biasa
+    (tanpa titik tiga); jika 3 atau lebih, gunakan dropdown titik tiga.
+
+    Untuk mode dropdown, state memakai nama unik "menuOpen" agar tidak
     bertabrakan (scope isolation) dengan variabel "open" milik modal halaman.
 --}}
+@if($count > 0 && $count <= 2)
+    <div class="flex items-center justify-start gap-1.5">
+        {{ $slot }}
+    </div>
+@else
 <div
     x-data="dropdownMenu({ align: '{{ $align }}' })"
     class="relative inline-block"
@@ -77,3 +86,4 @@ document.addEventListener('alpine:init', () => {
 </script>
 @endpush
 @endonce
+@endif

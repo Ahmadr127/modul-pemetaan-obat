@@ -50,7 +50,7 @@
                             </span>
                         </td>
                         <td class="px-4 py-3 whitespace-nowrap">
-                            <x-actions>
+                            <x-actions count="2">
                                 <x-actions-item icon="bi-pencil" label="Edit" @click="$dispatch('open-edit', { id: {{ $g->id }} })" />
                                 <x-actions-form action="{{ route('pemetaan-obat.generik.destroy', $g) }}" method="DELETE"
                                     icon="bi-trash" label="Hapus"
