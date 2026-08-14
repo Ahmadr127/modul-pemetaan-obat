@@ -21,6 +21,7 @@ class ImportLog extends Model
         'skipped',
         'failed',
         'errors',
+        'details',
     ];
 
     public const STATUS_SUCCESS = 'success';
@@ -33,6 +34,7 @@ class ImportLog extends Model
     {
         return [
             'errors' => 'array',
+            'details' => 'array',
         ];
     }
 

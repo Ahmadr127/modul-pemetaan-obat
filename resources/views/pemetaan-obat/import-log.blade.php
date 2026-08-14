@@ -49,7 +49,25 @@
                             <td class="px-4 py-3 text-center text-sky-600 font-semibold">{{ $row['skipped'] }}</td>
                             <td class="px-4 py-3 text-center text-red-600 font-semibold">{{ $row['failed'] }}</td>
                             <td class="px-4 py-3 max-w-md">
-                                <span class="text-xs text-gray-600 leading-snug block">{{ $row['message'] }}</span>
+                                @if(count($row['errors']) > 0)
+                                    <ul class="space-y-1 mb-2">
+                                        @foreach($row['errors'] as $error)
+                                            <li class="text-xs text-red-600 leading-snug"><i class="bi bi-x-circle mr-1"></i>{{ $error }}</li>
+                                        @endforeach
+                                    </ul>
+                                @endif
+
+                                @if(count($row['details']) > 0)
+                                    <ul class="space-y-1">
+                                        @foreach($row['details'] as $detail)
+                                            <li class="text-xs text-gray-600 leading-snug"><i class="bi bi-record-circle mr-1 text-gray-300"></i>{{ $detail }}</li>
+                                        @endforeach
+                                    </ul>
+                                @endif
+
+                                @if(count($row['errors']) === 0 && count($row['details']) === 0)
+                                    <span class="text-xs text-gray-400">-</span>
+                                @endif
                             </td>
                         </tr>
                     @empty

@@ -427,7 +427,8 @@ public function importTemplate()
                 'imported' => $log->imported,
                 'skipped' => $log->skipped,
                 'failed' => $log->failed,
-                'message' => $log->errors ? implode(' | ', $log->errors) : '-',
+                'errors' => $log->errors ?: [],
+                'details' => $log->details ?: [],
             ];
         })->values()->all();
 
@@ -601,7 +602,9 @@ public function importConfirm(Request $request)
         $this->recordImportLog(
             $result['failed'] > 0 ? ImportLog::STATUS_WARNING : ImportLog::STATUS_SUCCESS,
             $tempFileNameOriginal,
-            $result
+            $result,
+            [],
+            $result['details'] ?? []
         );
 
         $message = 'Import berhasil. Data diproses: '.$result['total']
@@ -616,7 +619,7 @@ public function importConfirm(Request $request)
         return redirect()->route('pemetaan-obat.index')->with('success', $message);
     }
 
-    private function recordImportLog(string $status, string $fileName, array $counts, array $errors = []): void
+    private function recordImportLog(string $status, string $fileName, array $counts, array $errors = [], array $details = []): void
     {
         try {
             ImportLog::create([
@@ -628,6 +631,7 @@ public function importConfirm(Request $request)
                 'skipped' => $counts['skipped'] ?? 0,
                 'failed' => $counts['failed'] ?? 0,
                 'errors' => $errors ?: null,
+                'details' => $details ?: null,
             ]);
         } catch (\Throwable) {
             // Logging tidak boleh mengganggu alur import.
@@ -1032,27 +1036,50 @@ if ($brand['status'] === 'error' && $group['status'] !== 'error') {
         return compact('groups', 'orphans', 'summary');
     }
 
-    private function performImport(array $built): array
+private function performImport(array $built): array
     {
         $groups = $built['groups'];
         $orphans = $built['orphans'];
         $imported = 0;
         $skipped = 0;
         $failed = 0;
+        $details = [];
 
         $generikIdByKode = ObatGenerik::pluck('id', 'kode_obat')->all();
+        $generikNames = ObatGenerik::pluck('nama_generik', 'kode_obat')->all();
 
         // 1. Resolve/create satu master generik per kode (jangan buat duplikat)
         foreach ($groups as $group) {
             if ($group['status'] === 'error') {
+                $failed++;
+                $details[] = 'Baris '.$group['row'].': Generik "'.($group['kode'] ?: '-').'" gagal diproses — '.implode(' ', $group['errors']);
+
                 continue;
             }
 
+            $kode = $group['kode'];
+            $created = ! isset($generikIdByKode[$kode]);
+
             $obatGenerik = ObatGenerik::firstOrCreate(
-                ['kode_obat' => $group['kode']],
+                ['kode_obat' => $kode],
                 ['nama_generik' => $group['nama'], 'harga_jual' => $group['harga']]
             );
-            $generikIdByKode[$group['kode']] = $obatGenerik->id;
+            $generikIdByKode[$kode] = $obatGenerik->id;
+
+            if ($created) {
+                $details[] = 'Baris '.$group['row'].': Generik "'.$kode.'" ('.$group['nama'].') dibuat baru dengan harga '
+                    .($group['harga'] === null ? '-' : number_format($group['harga'], 0, ',', '.'))
+                    .'.';
+            } else {
+                $detail = 'Baris '.$group['row'].': Generik "'.$kode.'" sudah ada di database (nama "'.$generikNames[$kode].'"), master tidak dibuat ulang.';
+                if ($generikNames[$kode] !== $group['nama']) {
+                    $detail .= ' Nama di file berbeda ("'.$group['nama'].'") — tidak ditimpa.';
+                }
+                if ($group['harga'] !== null) {
+                    $detail .= ' Harga di file tidak diterapkan.';
+                }
+                $details[] = $detail;
+            }
         }
 
         // 2. Resolve brand + buat mapping
@@ -1072,28 +1099,52 @@ if ($brand['status'] === 'error' && $group['status'] !== 'error') {
             $generikId = $generikIdByKode[$group['kode']] ?? null;
 
             foreach ($group['brands'] as $brand) {
+                $kode = $brand['kode'];
+                $row = $brand['row'];
+
                 if ($brand['status'] === 'error') {
-                    $failed++;
+                    if ($group['status'] !== 'error') {
+                        $failed++;
+                    }
+                    $details[] = 'Baris '.$row.': Brand "'.($kode ?: '-').'" gagal dipetakan — '.implode(' ', $brand['errors']);
+
                     continue;
                 }
 
-                if (in_array($brand['status'], ['exists', 'duplicate'], true)) {
+                if ($brand['status'] === 'duplicate') {
                     $skipped++;
+                    $details[] = 'Baris '.$row.': Brand "'.$kode.'" duplikat dalam file, mapping dilewati (sudah diproses di baris lain).';
+
+                    continue;
+                }
+
+                if ($brand['status'] === 'exists') {
+                    $skipped++;
+                    $detail = 'Baris '.$row.': Mapping brand "'.$kode.'" ke generik "'.$group['kode'].'" sudah ada, dilewati.';
+                    foreach ($brand['warnings'] as $warning) {
+                        $detail .= ' '.$warning;
+                    }
+                    $details[] = $detail;
+
                     continue;
                 }
 
                 if ($generikId === null) {
                     $failed++;
+                    $details[] = 'Baris '.$row.': Brand "'.$kode.'" tidak dapat dipetakan karena generik induk gagal.';
+
                     continue;
                 }
 
                 $brandId = $brand['brand_id'];
+                $brandCreated = false;
                 if ($brandId === null) {
                     $obatBrand = ObatBrand::firstOrCreate(
-                        ['kode_obat' => $brand['kode']],
+                        ['kode_obat' => $kode],
                         ['nama_brand' => $brand['nama'], 'harga_jual' => $brand['harga']]
                     );
                     $brandId = $obatBrand->id;
+                    $brandCreated = true;
                 }
 
                 PemetaanObat::firstOrCreate([
@@ -1101,16 +1152,31 @@ if ($brand['status'] === 'error' && $group['status'] !== 'error') {
                     'obat_brand_id' => $brandId,
                 ]);
                 $imported++;
+
+                $detail = 'Baris '.$row.': Brand "'.$kode.'" ('.$brand['nama'].')'
+                    .($brandCreated ? ' dibuat baru' : ' sudah ada di database')
+                    .' dan dipetakan ke generik "'.$group['kode'].'".';
+                if ($brandCreated) {
+                    $detail .= ' Harga: '.($brand['harga'] === null ? '-' : number_format($brand['harga'], 0, ',', '.')).'.';
+                }
+                foreach ($brand['warnings'] as $warning) {
+                    $detail .= ' '.$warning;
+                }
+                $details[] = $detail;
             }
         }
 
-        $failed += count($orphans);
+        foreach ($orphans as $orphan) {
+            $failed++;
+            $details[] = 'Baris '.$orphan['row'].': '.implode(' ', $orphan['errors']);
+        }
 
         return [
             'total' => $built['summary']['total'],
             'imported' => $imported,
             'skipped' => $skipped,
             'failed' => $failed,
+            'details' => $details,
         ];
     }
 

@@ -623,6 +623,11 @@ class PemetaanObatImportTest extends TestCase
             'skipped' => 0,
             'failed' => 0,
         ]);
+
+        $log = ImportLog::where('status', ImportLog::STATUS_SUCCESS)->latest()->first();
+        $this->assertNotEmpty($log->details);
+        $this->assertStringContainsString('dibuat baru', implode(' ', $log->details));
+        $this->assertStringContainsString('dipetakan ke generik', implode(' ', $log->details));
     }
 
     public function test_partial_import_creates_warning_log(): void
@@ -643,6 +648,49 @@ class PemetaanObatImportTest extends TestCase
             'skipped' => 0,
             'failed' => 2,
         ]);
+
+        $log = ImportLog::where('status', ImportLog::STATUS_WARNING)->latest()->first();
+        $this->assertNotEmpty($log->details);
+        $detailText = implode(' ', $log->details);
+        $this->assertStringContainsString('belum ada generik aktif', $detailText);
+        $this->assertStringContainsString('dibuat baru', $detailText);
+    }
+
+    public function test_existing_mapping_import_logs_details(): void
+    {
+        $generik = $this->createGenerik('OBT00006', 'ACETYLCISTEIN', 298202);
+        $brand = $this->createBrand('OBT0119', 'RESFAR', 298202);
+        PemetaanObat::create(['obat_generik_id' => $generik->id, 'obat_brand_id' => $brand->id]);
+
+        $this->preview([
+            ['OBT00006', 'ACETYLCISTEIN', 298202, 'OBT0119', 'RESFAR', 298202],
+        ])->assertOk();
+
+        $this->confirm()->assertRedirect(route('pemetaan-obat.index'));
+
+        $log = ImportLog::where('status', ImportLog::STATUS_SUCCESS)->latest()->first();
+        $this->assertNotEmpty($log->details);
+        $detailText = implode(' ', $log->details);
+        $this->assertStringContainsString('sudah ada di database', $detailText);
+        $this->assertStringContainsString('dilewati', $detailText);
+    }
+
+    public function test_existing_brand_not_overwritten_logs_details(): void
+    {
+        $this->createGenerik('OBT00006', 'ACETYLCISTEIN', 298202);
+        $this->createBrand('OBT0119', 'NAMA LAMA', 500);
+
+        $this->preview([
+            ['OBT00006', 'ACETYLCISTEIN', 298202, 'OBT0119', 'NAMA BARU', 900],
+        ])->assertOk();
+
+        $this->confirm()->assertRedirect(route('pemetaan-obat.index'));
+
+        $log = ImportLog::where('status', ImportLog::STATUS_SUCCESS)->latest()->first();
+        $this->assertNotEmpty($log->details);
+        $detailText = implode(' ', $log->details);
+        $this->assertStringContainsString('Nama brand berbeda', $detailText);
+        $this->assertStringContainsString('tidak akan diubah', $detailText);
     }
 
     public function test_rejected_file_creates_error_log(): void
@@ -688,6 +736,7 @@ class PemetaanObatImportTest extends TestCase
             'skipped' => 0,
             'failed' => 1,
             'errors' => ['Kolom "Nama Brand" tidak ditemukan.'],
+            'details' => ['Baris 3: Brand "OBT0119" gagal dipetakan — kode brand wajib diisi.'],
         ]);
 
         $response = $this->get(route('pemetaan-obat.import.log'));
@@ -695,6 +744,7 @@ class PemetaanObatImportTest extends TestCase
         $response->assertOk();
         $response->assertSee('import.xlsx');
         $response->assertSee('Kolom "Nama Brand" tidak ditemukan');
+        $response->assertSee('Brand "OBT0119" gagal dipetakan');
     }
 
     // ------------------------------------------------------------------
