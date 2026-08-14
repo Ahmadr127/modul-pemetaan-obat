@@ -29,33 +29,9 @@
         <div class="lg:col-span-8">
             <x-card padding="false">
                 <x-slot name="title">Data Obat Brand</x-slot>
-                <x-slot name="subtitle">Daftar obat brand / paten dalam sistem</x-slot>
-                <x-slot name="actions">
-                    <form method="GET" class="relative">
-                        <i class="bi bi-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs pointer-events-none"></i>
-                        <input type="text" name="search" value="{{ request('search') }}" placeholder="Cari kode / nama..."
-                            class="pl-8 pr-3 py-1.5 text-sm border border-gray-300 rounded-full bg-gray-50 focus:bg-white focus:ring-2 focus:ring-sp-primary/20 focus:border-sp-primary outline-none transition-colors w-48">
-                    </form>
-                </x-slot>
+                <x-slot name="subtitle">Daftar obat brand / paten dalam sistem — gunakan pencarian per kolom untuk memfilter data</x-slot>
 
-                <x-table :columns="['Kode', 'Nama Brand / Paten', 'Harga Jual', 'Aksi']" :pagination="$brandList" class="border-0 rounded-none shadow-none">
-                    @foreach($brandList as $b)
-                    <tr class="hover:bg-gray-50 transition-colors">
-                        <td class="px-4 py-3 whitespace-nowrap text-sm font-bold text-sp-navy">{{ $b->kode_obat }}</td>
-                        <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-900">{{ $b->nama_brand }}</td>
-                        <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-600">Rp {{ number_format($b->harga_jual ?? 0, 0, ',', '.') }}</td>
-                        <td class="px-4 py-3 whitespace-nowrap">
-                            <x-actions count="2">
-                                <x-actions-item icon="bi-pencil" label="Edit" @click="$dispatch('open-edit', { id: {{ $b->id }} })" />
-                                <x-actions-form action="{{ route('pemetaan-obat.brand.destroy', $b) }}" method="DELETE"
-                                    icon="bi-trash" label="Hapus"
-                                    color="text-gray-700 hover:bg-red-50 hover:text-red-600"
-                                    confirm="Yakin ingin menghapus obat brand ini?" />
-                            </x-actions>
-                        </td>
-                    </tr>
-                    @endforeach
-                </x-table>
+                <x-searchable-table :columns="$brandColumns" :rows="$brandRows" :actions="$brandActions" />
             </x-card>
         </div>
     </div>

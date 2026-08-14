@@ -29,38 +29,9 @@
         <div class="lg:col-span-8">
             <x-card padding="false">
                 <x-slot name="title">Data Obat Generik</x-slot>
-                <x-slot name="subtitle">Daftar kandungan / obat generik dalam sistem</x-slot>
-                <x-slot name="actions">
-                    <form method="GET" class="relative">
-                        <i class="bi bi-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs pointer-events-none"></i>
-                        <input type="text" name="search" value="{{ request('search') }}" placeholder="Cari kode / nama..."
-                            class="pl-8 pr-3 py-1.5 text-sm border border-gray-300 rounded-full bg-gray-50 focus:bg-white focus:ring-2 focus:ring-sp-primary/20 focus:border-sp-primary outline-none transition-colors w-48">
-                    </form>
-                </x-slot>
+                <x-slot name="subtitle">Daftar kandungan / obat generik dalam sistem — gunakan pencarian per kolom untuk memfilter data</x-slot>
 
-                <x-table :columns="['Kode', 'Nama Generik', 'Harga Jual', 'Brand', 'Aksi']" :pagination="$generikList" class="border-0 rounded-none shadow-none">
-                    @foreach($generikList as $g)
-                    <tr class="hover:bg-gray-50 transition-colors">
-                        <td class="px-4 py-3 whitespace-nowrap text-sm font-bold text-sp-navy">{{ $g->kode_obat }}</td>
-                        <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-900">{{ $g->nama_generik }}</td>
-                        <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-600">Rp {{ number_format($g->harga_jual ?? 0, 0, ',', '.') }}</td>
-                        <td class="px-4 py-3 whitespace-nowrap">
-                            <span class="inline-flex px-2 py-0.5 text-xs font-semibold rounded-full {{ $g->pemetaan_count > 0 ? 'bg-sp-primary/10 text-sp-primary' : 'bg-gray-100 text-gray-600' }}">
-                                {{ $g->pemetaan_count }} brand
-                            </span>
-                        </td>
-                        <td class="px-4 py-3 whitespace-nowrap">
-                            <x-actions count="2">
-                                <x-actions-item icon="bi-pencil" label="Edit" @click="$dispatch('open-edit', { id: {{ $g->id }} })" />
-                                <x-actions-form action="{{ route('pemetaan-obat.generik.destroy', $g) }}" method="DELETE"
-                                    icon="bi-trash" label="Hapus"
-                                    color="text-gray-700 hover:bg-red-50 hover:text-red-600"
-                                    confirm="Yakin ingin menghapus obat generik ini?" />
-                            </x-actions>
-                        </td>
-                    </tr>
-                    @endforeach
-                </x-table>
+                <x-searchable-table :columns="$generikColumns" :rows="$generikRows" :actions="$generikActions" />
             </x-card>
         </div>
     </div>

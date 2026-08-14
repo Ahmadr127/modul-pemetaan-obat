@@ -1,14 +1,14 @@
 <?php
 
-use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\DashboardController;
-use App\Http\Controllers\UserController;
-use App\Http\Controllers\RoleController;
-use App\Http\Controllers\PermissionController;
 use App\Http\Controllers\OrganizationTypeController;
 use App\Http\Controllers\OrganizationUnitController;
 use App\Http\Controllers\PemetaanObatController;
+use App\Http\Controllers\PermissionController;
+use App\Http\Controllers\RoleController;
+use App\Http\Controllers\UserController;
+use Illuminate\Support\Facades\Route;
 
 /*
 |--------------------------------------------------------------------------
@@ -37,7 +37,7 @@ Route::middleware('guest')->group(function () {
 Route::middleware('auth')->group(function () {
     Route::get('/dashboard', [DashboardController::class, 'index'])->middleware('permission:view_dashboard')->name('dashboard');
     Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
-    
+
     // Profile routes
     Route::get('/profile', [App\Http\Controllers\ProfileController::class, 'index'])->name('profile.index');
 
@@ -64,7 +64,7 @@ Route::middleware('auth')->group(function () {
     // Organization Unit Management routes
     Route::middleware('permission:manage_organization_units')->group(function () {
         Route::resource('organization-units', OrganizationUnitController::class);
-        
+
         // Member management routes
         Route::post('organization-units/{organization_unit}/members', [OrganizationUnitController::class, 'addMember'])
             ->name('organization-units.add-member');
@@ -99,6 +99,11 @@ Route::middleware('auth')->group(function () {
         Route::post('pemetaan-obat', [PemetaanObatController::class, 'store'])->name('pemetaan-obat.store');
         Route::put('pemetaan-obat/{pemetaan}', [PemetaanObatController::class, 'update'])->name('pemetaan-obat.update');
         Route::delete('pemetaan-obat/{pemetaan}', [PemetaanObatController::class, 'destroy'])->name('pemetaan-obat.destroy');
+
+        // Import Excel
+        Route::get('pemetaan-obat/import/template', [PemetaanObatController::class, 'importTemplate'])->name('pemetaan-obat.import.template');
+        Route::post('pemetaan-obat/import/preview', [PemetaanObatController::class, 'importPreview'])->name('pemetaan-obat.import.preview');
+        Route::post('pemetaan-obat/import/confirm', [PemetaanObatController::class, 'importConfirm'])->name('pemetaan-obat.import.confirm');
     });
 
 });

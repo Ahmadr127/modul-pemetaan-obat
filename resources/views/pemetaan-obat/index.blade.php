@@ -10,6 +10,13 @@
         <x-slot name="title">Pemetaan Obat</x-slot>
         <x-slot name="subtitle">Pilih obat generik / kandungan untuk melihat obat brand & paten terkait</x-slot>
         <x-slot name="actions">
+            <a href="{{ route('pemetaan-obat.import.template') }}" class="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-sp-primary border border-sp-primary/30 rounded-md hover:bg-sp-primary/5 transition-colors">
+                <i class="bi bi-file-earmark-arrow-down"></i> Download Template
+            </a>
+            <button type="button" @click="$dispatch('open-import')"
+                class="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-white rounded-md bg-sp-primary hover:bg-sp-primary-dark transition-colors">
+                <i class="bi bi-file-earmark-excel"></i> Import Excel
+            </button>
             <a href="{{ route('pemetaan-obat.generik') }}" class="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-sp-primary border border-sp-primary/30 rounded-md hover:bg-sp-primary/5 transition-colors">
                 <i class="bi bi-capsule"></i> Obat Generik
             </a>
@@ -93,32 +100,61 @@
                 <x-slot name="title">Obat Brand / Paten</x-slot>
                 <x-slot name="subtitle">Seluruh brand yang terpetakan ke generik terpilih</x-slot>
 
-                <x-table :columns="['Kode', 'Nama Brand / Paten', 'Harga Jual', 'Aksi']" class="border-0 rounded-none shadow-none">
-                    @forelse($pemetaan as $p)
-                    <tr class="hover:bg-gray-50 transition-colors">
-                        <td class="px-4 py-3 whitespace-nowrap text-sm font-bold text-sp-navy">{{ $p->obatBrand->kode_obat }}</td>
-                        <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-900">{{ $p->obatBrand->nama_brand }}</td>
-                        <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-600">Rp {{ number_format($p->obatBrand->harga_jual ?? 0, 0, ',', '.') }}</td>
-                        <td class="px-4 py-3 whitespace-nowrap">
-                            <x-actions count="2">
-                                <x-actions-item icon="bi-pencil" label="Edit Mapping" @click="$dispatch('open-edit', { id: {{ $p->id }} })" />
-                                <x-actions-form action="{{ route('pemetaan-obat.destroy', $p) }}" method="DELETE"
-                                    icon="bi-trash" label="Hapus Mapping"
-                                    color="text-gray-700 hover:bg-red-50 hover:text-red-600"
-                                    confirm="Yakin ingin menghapus pemetaan ini?" />
-                            </x-actions>
-                        </td>
-                    </tr>
-                    @empty
-                    <tr>
-                        <td colspan="4" class="px-4 py-8 text-center text-gray-500">Belum ada brand yang terpetakan.</td>
-                    </tr>
-                    @endforelse
-                </x-table>
+                <x-searchable-table :columns="$mappingColumns" :rows="$pemetaanRows" :actions="$mappingActions" empty="Belum ada brand yang terpetakan." />
             </x-card>
         </div>
     </div>
     @endif
+
+    {{-- MODAL IMPORT EXCEL --}}
+    <div x-data="importModal" @open-import.window="open = true" x-show="open" x-cloak
+         x-transition:enter="transition ease-out duration-150"
+         x-transition:enter-start="opacity-0"
+         x-transition:enter-end="opacity-100"
+         x-transition:leave="transition ease-in duration-100"
+         x-transition:leave-start="opacity-100"
+         x-transition:leave-end="opacity-0"
+         @keydown.escape.window="close()"
+         class="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div class="fixed inset-0 bg-black/50" @click="close()"></div>
+
+        <div class="relative bg-white rounded-lg shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+            <div class="flex items-center justify-between px-4 py-3 border-b border-gray-100 bg-sp-primary text-white rounded-t-lg">
+                <h5 class="font-bold"><i class="bi bi-file-earmark-excel mr-2"></i>Import Excel Pemetaan Obat</h5>
+                <button type="button" @click="close()" class="text-white/80 hover:text-white transition-colors"><i class="bi bi-x-lg"></i></button>
+            </div>
+
+            <form action="{{ route('pemetaan-obat.import.preview') }}" method="POST" enctype="multipart/form-data" class="p-4">
+                @csrf
+
+                <div class="mb-3">
+                    <label for="import-file" class="block text-sm font-semibold text-sp-navy mb-1">
+                        File Excel <span class="text-red-500">*</span>
+                    </label>
+                    <input type="file" id="import-file" name="file" accept=".xlsx,.xls" required
+                        @change="fileName = $event.target.files[0] ? $event.target.files[0].name : ''"
+                        class="w-full text-sm px-3 py-2 border border-gray-300 rounded-md bg-white file:mr-3 file:py-1.5 file:px-3 file:border-0 file:rounded-md file:bg-sp-primary/10 file:text-sp-primary file:font-semibold hover:file:bg-sp-primary/20 focus:outline-none focus:ring-2 focus:ring-sp-primary/20 focus:border-sp-primary transition-colors">
+                    <p class="mt-1 text-xs text-gray-500" x-show="fileName" x-text="'File terpilih: ' + fileName"></p>
+                    <p class="mt-1 text-xs text-gray-500">Format: .xlsx / .xls, maksimal 5 MB. Gunakan template yang tersedia agar format sesuai.</p>
+                </div>
+
+                @error('file')
+                    <p class="mb-3 text-xs text-red-500">{{ $message }}</p>
+                @enderror
+
+                <div class="flex justify-end gap-2 mt-4">
+                    <button type="button" @click="close()"
+                        class="inline-flex items-center px-4 py-2 text-sm font-semibold text-gray-600 border border-gray-300 rounded-md bg-white hover:bg-gray-50 transition-colors">
+                        Batal
+                    </button>
+                    <button type="submit"
+                        class="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-semibold text-white rounded-md bg-sp-primary hover:bg-sp-primary-dark transition-colors">
+                        <i class="bi bi-eye"></i> Preview
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
 
     {{-- MODAL EDIT MAPPING --}}
     <div x-show="open" x-cloak
@@ -182,6 +218,14 @@
 @push('scripts')
 <script>
 document.addEventListener('alpine:init', () => {
+    Alpine.data('importModal', () => ({
+        open: false,
+        fileName: '',
+        close() {
+            this.open = false;
+        }
+    }));
+
     Alpine.data('mappingModal', (initial = {}) => ({
         roles: initial,
         open: false,

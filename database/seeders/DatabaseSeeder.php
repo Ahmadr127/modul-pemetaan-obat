@@ -18,7 +18,7 @@ class DatabaseSeeder extends Seeder
             RolePermissionSeeder::class,
             OrganizationTypeSeeder::class,
             OrganizationUnitSeeder::class,
-            PemetaanObatSeeder::class,
+            // PemetaanObatSeeder::class,
         ]);
 
         // Create admin user

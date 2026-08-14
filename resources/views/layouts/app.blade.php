@@ -242,6 +242,9 @@
             @if(session('error'))
                 window.Toast && Toast.error(@json(session('error')));
             @endif
+            @if(session('warning'))
+                window.Toast && Toast.warning(@json(session('warning')));
+            @endif
             @if($errors->any())
                 @foreach($errors->all() as $err)
                     window.Toast && Toast.error(@json($err), { duration: 6000 });

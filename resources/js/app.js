@@ -44,6 +44,8 @@ document.addEventListener('alpine:init', () => {
         perPageOptions: config.perPageOptions || [5, 10, 25, 50, 100],
         empty: config.empty || 'Tidak ada data.',
         searchPlaceholder: config.searchPlaceholder || 'Cari...',
+        actions: config.actions || [],
+        csrfToken: config.csrfToken || '',
         page: 1,
         filters: {},
 
@@ -51,6 +53,18 @@ document.addEventListener('alpine:init', () => {
             this.columns.forEach(col => {
                 this.filters[col.key] = '';
             });
+        },
+
+        resolveUrl(url, row) {
+            if (!url) return '#';
+            return String(url).replace('{id}', row.id ?? '');
+        },
+
+        confirmSubmit(event, action) {
+            if (action.confirm && !window.confirm(action.confirm)) {
+                return;
+            }
+            event.target.submit();
         },
 
         get filteredRows() {
