@@ -12,6 +12,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Str;
 use Illuminate\Testing\TestResponse;
+use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use Tests\TestCase;
@@ -20,9 +21,7 @@ class PemetaanObatImportTest extends TestCase
 {
     use RefreshDatabase;
 
-    private const GENERIK_HEADERS = ['kode_obat', 'nama_generik', 'harga_jual'];
-
-    private const BRAND_HEADERS = ['kode_generik', 'kode_brand', 'nama_brand', 'harga_brand'];
+    private const HEADERS = ['Kode Generik', 'Nama Generik/Kandungan', 'Harga Generik', 'Kode Brand', 'Nama Brand', 'Harga Brand'];
 
     protected function setUp(): void
     {
@@ -56,21 +55,17 @@ class PemetaanObatImportTest extends TestCase
         ]);
     }
 
-    private function makeWorkbook(array $sheets): string
+    private function makeWorkbook(array $rows, ?array $headers = null): string
     {
         $spreadsheet = new Spreadsheet;
-        $first = true;
+        $worksheet = $spreadsheet->getActiveSheet();
+        $worksheet->setTitle('Pemetaan Obat');
+        $worksheet->fromArray([$headers ?? self::HEADERS], null, 'A1');
 
-        foreach ($sheets as $sheet) {
-            $worksheet = $first ? $spreadsheet->getActiveSheet() : $spreadsheet->createSheet();
-            $first = false;
-
-            $worksheet->setTitle($sheet['title']);
-            if (! empty($sheet['headers'])) {
-                $worksheet->fromArray([$sheet['headers']], null, 'A1');
-            }
-            if (! empty($sheet['rows'])) {
-                $worksheet->fromArray($sheet['rows'], null, 'A2');
+        foreach ($rows as $r => $row) {
+            foreach ($row as $c => $value) {
+                $col = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($c + 1);
+                $worksheet->setCellValueExplicit($col.($r + 2), (string) $value, \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
             }
         }
 
@@ -81,12 +76,30 @@ class PemetaanObatImportTest extends TestCase
         return $path;
     }
 
-    private function makeImportFile(array $generikRows, array $brandRows): string
+    private function makeImportFile(array $rows): string
     {
-        return $this->makeWorkbook([
-            ['title' => 'OBAT_GENERIK', 'headers' => self::GENERIK_HEADERS, 'rows' => $generikRows],
-            ['title' => 'PEMETAAN_BRAND', 'headers' => self::BRAND_HEADERS, 'rows' => $brandRows],
-        ]);
+        return $this->makeWorkbook($rows);
+    }
+
+    private function makeOldTwoSheetWorkbook(): string
+    {
+        $spreadsheet = new Spreadsheet;
+
+        $generikSheet = $spreadsheet->getActiveSheet();
+        $generikSheet->setTitle('OBAT_GENERIK');
+        $generikSheet->fromArray([['kode_obat', 'nama_generik', 'harga_jual']], null, 'A1');
+        $generikSheet->fromArray([['OBT00006', 'ACETYLCISTEIN', 298202]], null, 'A2');
+
+        $brandSheet = $spreadsheet->createSheet();
+        $brandSheet->setTitle('PEMETAAN_BRAND');
+        $brandSheet->fromArray([['kode_generik', 'kode_brand', 'nama_brand', 'harga_brand']], null, 'A1');
+        $brandSheet->fromArray([['OBT00006', 'OBT0119', 'RESFAR', 298202]], null, 'A2');
+
+        $writer = new Xlsx($spreadsheet);
+        $path = sys_get_temp_dir().'/pmo_old_'.uniqid().'.xlsx';
+        $writer->save($path);
+
+        return $path;
     }
 
     private function upload(string $path, string $name = 'import.xlsx'): TestResponse
@@ -102,9 +115,9 @@ class PemetaanObatImportTest extends TestCase
         return $this->post(route('pemetaan-obat.import.preview'), ['file' => $file]);
     }
 
-    private function preview(array $generikRows, array $brandRows): TestResponse
+    private function preview(array $rows): TestResponse
     {
-        return $this->upload($this->makeImportFile($generikRows, $brandRows));
+        return $this->upload($this->makeImportFile($rows));
     }
 
     private function assertSummary(TestResponse $response, array $expected): void
@@ -114,6 +127,11 @@ class PemetaanObatImportTest extends TestCase
         foreach ($expected as $key => $value) {
             $this->assertEquals($value, $summary[$key], "Ringkasan tidak sesuai untuk \"{$key}\".");
         }
+    }
+
+    private function confirm(): TestResponse
+    {
+        return $this->post(route('pemetaan-obat.import.confirm'));
     }
 
     private function createGenerik(string $kode, string $nama = 'Generik Test', ?int $harga = 1000): ObatGenerik
@@ -134,13 +152,8 @@ class PemetaanObatImportTest extends TestCase
         ]);
     }
 
-    private function confirm(): TestResponse
-    {
-        return $this->post(route('pemetaan-obat.import.confirm'));
-    }
-
     // ------------------------------------------------------------------
-    // Validasi file
+    // Validasi file & header
     // ------------------------------------------------------------------
 
     public function test_non_excel_file_is_rejected(): void
@@ -153,90 +166,327 @@ class PemetaanObatImportTest extends TestCase
         $response->assertSessionHasErrors('file');
     }
 
-    public function test_missing_required_sheet_is_rejected(): void
+    public function test_missing_required_column_is_rejected(): void
     {
-        $path = $this->makeWorkbook([
-            ['title' => 'OBAT_GENERIK', 'headers' => self::GENERIK_HEADERS, 'rows' => [['OBT00006', 'ACETYLCISTEIN', 298202]]],
-        ]);
+        $headers = ['Kode Generik', 'Nama Generik/Kandungan', 'Harga Generik', 'Kode Brand', 'Harga Brand'];
+        $path = $this->makeWorkbook([['OBT00006', 'ACETYLCISTEIN', 298202, 'OBT0119', 298202]], $headers);
 
         $response = $this->upload($path);
 
         $response->assertRedirect(route('pemetaan-obat.index'));
-        $response->assertSessionHas('error', fn (string $message) => str_contains($message, 'PEMETAAN_BRAND'));
+        $response->assertSessionHas('error', fn (string $message) => str_contains($message, 'Kolom "Nama Brand" tidak ditemukan'));
     }
 
-    public function test_wrong_headers_are_rejected(): void
+    public function test_old_two_sheet_format_is_rejected_with_clear_error(): void
     {
-        $path = $this->makeWorkbook([
-            ['title' => 'OBAT_GENERIK', 'headers' => ['kode', 'nama', 'harga'], 'rows' => [['OBT00006', 'ACETYLCISTEIN', 298202]]],
-            ['title' => 'PEMETAAN_BRAND', 'headers' => self::BRAND_HEADERS, 'rows' => []],
-        ]);
+        $path = $this->makeOldTwoSheetWorkbook();
 
         $response = $this->upload($path);
 
         $response->assertRedirect(route('pemetaan-obat.index'));
-        $response->assertSessionHas('error', fn (string $message) => str_contains($message, 'Header sheet'));
+        $response->assertSessionHas('error', fn (string $message) => str_contains($message, 'Kolom "Kode Generik" tidak ditemukan'));
     }
 
     // ------------------------------------------------------------------
-    // Validasi data
+    // Test 1 — single generik, single brand
     // ------------------------------------------------------------------
 
-    public function test_empty_generik_code_produces_error(): void
+    public function test_single_generik_single_brand(): void
     {
-        $response = $this->preview(
-            [['', 'ACETYLCISTEIN', 298202]],
-            []
-        );
+        $response = $this->preview([
+            ['OBT00015', 'ACYCLOVIR', 13352, 'OBT02033', 'ZOTER', 97403],
+        ]);
 
-        $this->assertSummary($response, ['total' => 1, 'error' => 1]);
-        $response->assertSee('kode_obat wajib diisi');
+        $this->assertSummary($response, ['total' => 1, 'generik' => 1, 'brand' => 1, 'mapping' => 1, 'error' => 0]);
+
+        $this->confirm()->assertRedirect(route('pemetaan-obat.index'));
+
+        $this->assertDatabaseCount('obat_generik', 1);
+        $this->assertDatabaseCount('obat_brand', 1);
+        $this->assertDatabaseCount('pemetaan_obat', 1);
     }
 
-    public function test_empty_brand_code_produces_error(): void
+    // ------------------------------------------------------------------
+    // Test 2 — single generik, multiple brand (current generik diwariskan)
+    // ------------------------------------------------------------------
+
+    public function test_single_generik_multiple_brand(): void
     {
-        $this->createGenerik('OBT00006');
+        $response = $this->preview([
+            ['OBT00006', 'ACETYLCISTEIN', 298202, 'OBT0119', 'RESFAR', 298202],
+            ['', '', '', 'OBT0494', 'FLUIMUCIL', 96308],
+        ]);
 
-        $response = $this->preview(
-            [],
-            [['OBT00006', '', 'RESFAR 30 ML INJ', 298202]]
-        );
+        $this->assertSummary($response, ['total' => 2, 'generik' => 1, 'brand' => 2, 'mapping' => 2, 'error' => 0]);
 
-        $this->assertSummary($response, ['total' => 1, 'error' => 1]);
-        $response->assertSee('kode_brand wajib diisi');
+        $this->confirm()->assertRedirect(route('pemetaan-obat.index'));
+
+        $this->assertEquals(1, ObatGenerik::where('kode_obat', 'OBT00006')->count());
+        $this->assertDatabaseCount('pemetaan_obat', 2);
+
+        $generik = ObatGenerik::where('kode_obat', 'OBT00006')->first();
+        $this->assertDatabaseHas('pemetaan_obat', ['obat_generik_id' => $generik->id, 'obat_brand_id' => ObatBrand::where('kode_obat', 'OBT0119')->value('id')]);
+        $this->assertDatabaseHas('pemetaan_obat', ['obat_generik_id' => $generik->id, 'obat_brand_id' => ObatBrand::where('kode_obat', 'OBT0494')->value('id')]);
     }
 
-    public function test_unknown_generik_code_produces_error(): void
+    // ------------------------------------------------------------------
+    // Test 3 — multiple generik
+    // ------------------------------------------------------------------
+
+    public function test_multiple_generik(): void
     {
-        $this->createBrand('OBT0119');
+        $response = $this->preview([
+            ['OBT00006', 'ACETYLCISTEIN', 298202, 'OBT0119', 'RESFAR', 298202],
+            ['', '', '', 'OBT0494', 'FLUIMUCIL', 96308],
+            ['OBT00015', 'ACYCLOVIR', 13352, 'OBT02033', 'ZOTER', 97403],
+        ]);
 
-        $response = $this->preview(
-            [],
-            [['OBT99999', 'OBT0119', 'RESFAR 30 ML INJ', 298202]]
-        );
+        $this->assertSummary($response, ['generik' => 2, 'brand' => 3, 'mapping' => 3, 'error' => 0]);
 
-        $this->assertSummary($response, ['total' => 1, 'error' => 1]);
-        $response->assertSee('tidak ditemukan');
+        $this->confirm()->assertRedirect(route('pemetaan-obat.index'));
+
+        $this->assertDatabaseCount('obat_generik', 2);
+        $this->assertDatabaseCount('obat_brand', 3);
+        $this->assertDatabaseCount('pemetaan_obat', 3);
+
+        $g6 = ObatGenerik::where('kode_obat', 'OBT00006')->first();
+        $g15 = ObatGenerik::where('kode_obat', 'OBT00015')->first();
+
+        $this->assertDatabaseHas('pemetaan_obat', ['obat_generik_id' => $g6->id, 'obat_brand_id' => ObatBrand::where('kode_obat', 'OBT0119')->value('id')]);
+        $this->assertDatabaseHas('pemetaan_obat', ['obat_generik_id' => $g6->id, 'obat_brand_id' => ObatBrand::where('kode_obat', 'OBT0494')->value('id')]);
+        $this->assertDatabaseHas('pemetaan_obat', ['obat_generik_id' => $g15->id, 'obat_brand_id' => ObatBrand::where('kode_obat', 'OBT02033')->value('id')]);
     }
+
+    // ------------------------------------------------------------------
+    // Test 4 — empty generic row inherits parent
+    // ------------------------------------------------------------------
+
+    public function test_empty_generic_row_inherits_parent(): void
+    {
+        $response = $this->preview([
+            ['OBT00006', 'ACETYLCISTEIN', 298202, 'OBT0119', 'RESFAR', 298202],
+            ['', '', '', 'OBT0494', 'FLUIMUCIL', 96308],
+        ]);
+
+        $this->assertSummary($response, ['generik' => 1, 'brand' => 2, 'mapping' => 2, 'error' => 0]);
+
+        $this->confirm()->assertRedirect(route('pemetaan-obat.index'));
+
+        $generik = ObatGenerik::where('kode_obat', 'OBT00006')->first();
+        $brand = ObatBrand::where('kode_obat', 'OBT0494')->first();
+
+        $this->assertNotNull($generik);
+        $this->assertDatabaseHas('pemetaan_obat', ['obat_generik_id' => $generik->id, 'obat_brand_id' => $brand->id]);
+    }
+
+    // ------------------------------------------------------------------
+    // Test 5 — empty generic tanpa parent -> error, tidak ada mapping
+    // ------------------------------------------------------------------
+
+    public function test_empty_generic_without_parent_produces_error(): void
+    {
+        $response = $this->preview([
+            ['', '', '', 'OBT0119', 'RESFAR', 298202],
+        ]);
+
+        $this->assertSummary($response, ['total' => 1, 'generik' => 0, 'mapping' => 0, 'error' => 1]);
+        $response->assertSee('belum ada generik aktif');
+
+        $this->confirm()->assertRedirect(route('pemetaan-obat.index'));
+
+        $this->assertDatabaseCount('obat_brand', 0);
+        $this->assertDatabaseCount('pemetaan_obat', 0);
+    }
+
+    // ------------------------------------------------------------------
+    // Test 6 — existing generik tidak dibuat duplikat
+    // ------------------------------------------------------------------
+
+    public function test_existing_generic_is_not_duplicated(): void
+    {
+        $this->createGenerik('OBT00006', 'ACETYLCISTEIN', 298202);
+
+        $response = $this->preview([
+            ['OBT00006', 'ACETYLCISTEIN', 298202, 'OBT0119', 'RESFAR', 298202],
+        ]);
+
+        $this->assertSummary($response, ['generik' => 1, 'mapping' => 1, 'error' => 0]);
+
+        $this->confirm()->assertRedirect(route('pemetaan-obat.index'));
+
+        $this->assertEquals(1, ObatGenerik::where('kode_obat', 'OBT00006')->count());
+    }
+
+    // ------------------------------------------------------------------
+    // Test 7 — existing mapping tidak dibuat duplikat
+    // ------------------------------------------------------------------
+
+    public function test_existing_mapping_is_not_duplicated(): void
+    {
+        $generik = $this->createGenerik('OBT00006');
+        $brand = $this->createBrand('OBT0119');
+        PemetaanObat::create(['obat_generik_id' => $generik->id, 'obat_brand_id' => $brand->id]);
+
+        $response = $this->preview([
+            ['OBT00006', 'ACETYLCISTEIN', 298202, 'OBT0119', 'RESFAR', 298202],
+        ]);
+
+        $this->assertSummary($response, ['mapping' => 1, 'exists' => 1, 'new' => 0]);
+
+        $this->confirm()->assertRedirect(route('pemetaan-obat.index'));
+
+        $this->assertDatabaseCount('pemetaan_obat', 1);
+    }
+
+    // ------------------------------------------------------------------
+    // Test 8 — generik dengan banyak brand
+    // ------------------------------------------------------------------
+
+    public function test_generik_with_many_brands(): void
+    {
+        $response = $this->preview([
+            ['OBT02820', 'DESOXIMETASONE 0.25 CREAM 15G - JS', 19945, 'OBT00441', 'ESPERSON CREAM 15 GR', 261580],
+            ['', '', '', 'OBT00442', 'ESPERSON CREAM 5 GR', 105709],
+        ]);
+
+        $this->assertSummary($response, ['generik' => 1, 'brand' => 2, 'mapping' => 2, 'error' => 0]);
+
+        $this->confirm()->assertRedirect(route('pemetaan-obat.index'));
+
+        $this->assertEquals(1, ObatGenerik::where('kode_obat', 'OBT02820')->count());
+        $this->assertDatabaseCount('pemetaan_obat', 2);
+
+        $generikId = ObatGenerik::where('kode_obat', 'OBT02820')->value('id');
+        $this->assertDatabaseHas('pemetaan_obat', ['obat_generik_id' => $generikId, 'obat_brand_id' => ObatBrand::where('kode_obat', 'OBT00441')->value('id')]);
+        $this->assertDatabaseHas('pemetaan_obat', ['obat_generik_id' => $generikId, 'obat_brand_id' => ObatBrand::where('kode_obat', 'OBT00442')->value('id')]);
+    }
+
+    // ------------------------------------------------------------------
+    // Test 9 — brand sudah dipetakan ke generik lain -> conflict
+    // ------------------------------------------------------------------
+
+    public function test_brand_already_mapped_to_other_generik_produces_error(): void
+    {
+        $g6 = $this->createGenerik('OBT00006');
+        $g15 = $this->createGenerik('OBT00015');
+        $brand = $this->createBrand('OBT0119');
+        PemetaanObat::create(['obat_generik_id' => $g15->id, 'obat_brand_id' => $brand->id]);
+
+        $response = $this->preview([
+            ['OBT00006', 'ACETYLCISTEIN', 298202, 'OBT0119', 'RESFAR', 298202],
+        ]);
+
+        $this->assertSummary($response, ['mapping' => 0, 'error' => 1]);
+        $response->assertSee('sudah terpetakan');
+
+        $this->confirm()->assertRedirect(route('pemetaan-obat.index'));
+
+        $this->assertDatabaseHas('pemetaan_obat', ['obat_generik_id' => $g15->id, 'obat_brand_id' => $brand->id]);
+        $this->assertDatabaseMissing('pemetaan_obat', ['obat_generik_id' => $g6->id, 'obat_brand_id' => $brand->id]);
+    }
+
+    // ------------------------------------------------------------------
+    // Test 10 — duplicate row dalam file -> tidak ada duplicate mapping
+    // ------------------------------------------------------------------
+
+    public function test_duplicate_row_in_file_not_duplicated(): void
+    {
+        $response = $this->preview([
+            ['OBT00006', 'ACETYLCISTEIN', 298202, 'OBT0119', 'RESFAR', 298202],
+            ['', '', '', 'OBT0119', 'RESFAR', 298202],
+        ]);
+
+        $this->assertSummary($response, ['mapping' => 1, 'duplicate' => 1, 'new' => 1]);
+
+        $this->confirm()->assertRedirect(route('pemetaan-obat.index'));
+
+        $this->assertDatabaseCount('pemetaan_obat', 1);
+    }
+
+    // ------------------------------------------------------------------
+    // Test 11 — kode generik duplikat dengan data berbeda -> warning
+    // ------------------------------------------------------------------
+
+    public function test_generic_duplicate_with_different_data_warns(): void
+    {
+        $response = $this->preview([
+            ['OBT00006', 'ACETYLCISTEIN', 298202, 'OBT0119', 'RESFAR', 298202],
+            ['OBT00006', 'NAMA BERBEDA', 999, 'OBT0494', 'FLUIMUCIL', 96308],
+        ]);
+
+        $this->assertSummary($response, ['generik' => 1, 'brand' => 2, 'mapping' => 2, 'error' => 0, 'warning' => 1]);
+
+        $this->confirm()->assertRedirect(route('pemetaan-obat.index'));
+
+        $this->assertDatabaseCount('obat_generik', 1);
+        $this->assertDatabaseHas('obat_generik', ['kode_obat' => 'OBT00006', 'nama_generik' => 'ACETYLCISTEIN']);
+        $this->assertDatabaseCount('pemetaan_obat', 2);
+    }
+
+    // ------------------------------------------------------------------
+    // Test 12 — blank row tidak mereset current generik
+    // ------------------------------------------------------------------
+
+    public function test_blank_row_does_not_reset_parent(): void
+    {
+        $response = $this->preview([
+            ['OBT00006', 'ACETYLCISTEIN', 298202, 'OBT0119', 'RESFAR', 298202],
+            ['', '', '', '', '', ''],
+            ['', '', '', 'OBT0494', 'FLUIMUCIL', 96308],
+        ]);
+
+        $this->assertSummary($response, ['total' => 2, 'generik' => 1, 'brand' => 2, 'mapping' => 2, 'error' => 0]);
+
+        $this->confirm()->assertRedirect(route('pemetaan-obat.index'));
+
+        $generik = ObatGenerik::where('kode_obat', 'OBT00006')->first();
+        $this->assertDatabaseHas('pemetaan_obat', ['obat_generik_id' => $generik->id, 'obat_brand_id' => ObatBrand::where('kode_obat', 'OBT0494')->value('id')]);
+        $this->assertDatabaseCount('pemetaan_obat', 2);
+    }
+
+    // ------------------------------------------------------------------
+    // Test 13 — pergantian generik (current parent hanya berubah saat kode baru)
+    // ------------------------------------------------------------------
+
+    public function test_generik_switch_changes_parent_only_when_new_code(): void
+    {
+        $response = $this->preview([
+            ['OBT00006', 'ACETYLCISTEIN', 298202, 'OBT0119', 'RESFAR', 298202],
+            ['', '', '', 'OBT0494', 'FLUIMUCIL', 96308],
+            ['OBT00015', 'ACYCLOVIR', 13352, 'OBT02033', 'ZOTER', 97403],
+            ['', '', '', 'OBT02034', 'BRAND B', 100],
+        ]);
+
+        $this->assertSummary($response, ['generik' => 2, 'brand' => 4, 'mapping' => 4, 'error' => 0]);
+
+        $this->confirm()->assertRedirect(route('pemetaan-obat.index'));
+
+        $g6 = ObatGenerik::where('kode_obat', 'OBT00006')->first();
+        $g15 = ObatGenerik::where('kode_obat', 'OBT00015')->first();
+
+        $this->assertDatabaseHas('pemetaan_obat', ['obat_generik_id' => $g6->id, 'obat_brand_id' => ObatBrand::where('kode_obat', 'OBT0494')->value('id')]);
+        $this->assertDatabaseHas('pemetaan_obat', ['obat_generik_id' => $g15->id, 'obat_brand_id' => ObatBrand::where('kode_obat', 'OBT02033')->value('id')]);
+        $this->assertDatabaseHas('pemetaan_obat', ['obat_generik_id' => $g15->id, 'obat_brand_id' => ObatBrand::where('kode_obat', 'OBT02034')->value('id')]);
+        $this->assertDatabaseCount('pemetaan_obat', 4);
+    }
+
+    // ------------------------------------------------------------------
+    // Brand baru / conflict dalam file
+    // ------------------------------------------------------------------
 
     public function test_new_brand_is_created_from_file(): void
     {
         $this->createGenerik('OBT00006');
 
-        $response = $this->preview(
-            [],
-            [['OBT00006', 'OBT99999', 'RESFAR 30 ML INJ', 298202]]
-        );
+        $response = $this->preview([
+            ['OBT00006', 'ACETYLCISTEIN', 298202, 'OBT99999', 'RESFAR', 298202],
+        ]);
 
-        $this->assertSummary($response, ['total' => 1, 'new' => 1, 'error' => 0]);
+        $this->assertSummary($response, ['mapping' => 1, 'error' => 0]);
 
         $this->confirm()->assertRedirect(route('pemetaan-obat.index'));
 
-        $this->assertDatabaseHas('obat_brand', [
-            'kode_obat' => 'OBT99999',
-            'nama_brand' => 'RESFAR 30 ML INJ',
-            'harga_jual' => 298202,
-        ]);
+        $this->assertDatabaseHas('obat_brand', ['kode_obat' => 'OBT99999', 'nama_brand' => 'RESFAR', 'harga_jual' => 298202]);
         $this->assertDatabaseCount('pemetaan_obat', 1);
     }
 
@@ -244,214 +494,99 @@ class PemetaanObatImportTest extends TestCase
     {
         $this->createGenerik('OBT00006');
 
-        $response = $this->preview(
-            [],
-            [['OBT00006', 'OBT99999', '', 298202]]
-        );
+        $response = $this->preview([
+            ['OBT00006', 'ACETYLCISTEIN', 298202, 'OBT99999', '', 298202],
+        ]);
 
-        $this->assertSummary($response, ['total' => 1, 'error' => 1]);
-        $response->assertSee('nama_brand wajib diisi');
+        $this->assertSummary($response, ['mapping' => 0, 'error' => 1]);
+        $response->assertSee('nama brand wajib diisi');
     }
 
     public function test_same_brand_to_two_generik_in_file_produces_error(): void
     {
-        $this->createGenerik('OBT00006');
-        $this->createGenerik('OBT00007');
+        $response = $this->preview([
+            ['OBT00006', 'ACETYLCISTEIN', 298202, 'OBT0119', 'RESFAR', 298202],
+            ['OBT00015', 'ACYCLOVIR', 13352, 'OBT0119', 'RESFAR', 298202],
+        ]);
 
-        $response = $this->preview(
-            [],
-            [
-                ['OBT00006', 'OBT99999', 'RESFAR', 298202],
-                ['OBT00007', 'OBT99999', 'RESFAR', 298202],
-            ]
-        );
-
-        $this->assertSummary($response, ['total' => 2, 'new' => 1, 'error' => 1]);
-        $response->assertSee('sudah terpetakan');
-    }
-
-    public function test_non_numeric_price_produces_error(): void
-    {
-        $generikResponse = $this->preview(
-            [['OBT00006', 'ACETYLCISTEIN', 'abc']],
-            []
-        );
-        $this->assertSummary($generikResponse, ['total' => 1, 'error' => 1]);
-
-        $this->createGenerik('OBT00015');
-        $this->createBrand('OBT02033');
-
-        $brandResponse = $this->preview(
-            [],
-            [['OBT00015', 'OBT02033', 'ZOTER CREAM', 'abc']]
-        );
-        $this->assertSummary($brandResponse, ['total' => 1, 'error' => 1]);
-    }
-
-    public function test_duplicate_pair_in_file_marked_duplicate(): void
-    {
-        $this->createGenerik('OBT00006');
-        $this->createBrand('OBT0119');
-
-        $response = $this->preview(
-            [],
-            [
-                ['OBT00006', 'OBT0119', 'RESFAR 30 ML INJ', 298202],
-                ['OBT00006', 'OBT0119', 'RESFAR 30 ML INJ', 298202],
-            ]
-        );
-
-        $this->assertSummary($response, ['total' => 2, 'new' => 1, 'duplicate' => 1, 'error' => 0]);
+        $this->assertSummary($response, ['mapping' => 1, 'error' => 1]);
 
         $this->confirm()->assertRedirect(route('pemetaan-obat.index'));
+
         $this->assertDatabaseCount('pemetaan_obat', 1);
-    }
-
-    public function test_brand_already_mapped_to_other_generik_produces_error(): void
-    {
-        $this->createGenerik('OBT00006', 'Generik 1');
-        $this->createGenerik('OBT00007', 'Generik 2');
-        $brand = $this->createBrand('OBT0119');
-
-        PemetaanObat::create([
-            'obat_generik_id' => ObatGenerik::where('kode_obat', 'OBT00007')->value('id'),
-            'obat_brand_id' => $brand->id,
-        ]);
-
-        $response = $this->preview(
-            [],
-            [['OBT00006', 'OBT0119', 'RESFAR 30 ML INJ', 298202]]
-        );
-
-        $this->assertSummary($response, ['total' => 1, 'error' => 1]);
-        $response->assertSee('sudah terpetakan');
-    }
-
-    // ------------------------------------------------------------------
-    // Preview & import
-    // ------------------------------------------------------------------
-
-    public function test_valid_file_shows_preview_and_imports_data(): void
-    {
-        $path = $this->makeImportFile(
-            [['OBT00006', 'ACETYLCISTEIN INF US 200 MG/ML - JS', 298202]],
-            [['OBT00006', 'OBT0119', 'RESFAR 30 ML INJ', 298202]]
-        );
-
-        $preview = $this->upload($path);
-        $this->assertSummary($preview, ['total' => 2, 'new' => 2, 'error' => 0]);
-        $preview->assertSee('ACETYLCISTEIN INF');
-
-        $response = $this->confirm();
-        $response->assertRedirect(route('pemetaan-obat.index'));
-        $response->assertSessionHas('success');
-
-        $this->assertDatabaseHas('obat_generik', [
-            'kode_obat' => 'OBT00006',
-            'nama_generik' => 'ACETYLCISTEIN INF US 200 MG/ML - JS',
-            'harga_jual' => 298202,
-        ]);
-
-        $this->assertDatabaseHas('obat_brand', [
-            'kode_obat' => 'OBT0119',
-            'nama_brand' => 'RESFAR 30 ML INJ',
-            'harga_jual' => 298202,
-        ]);
-
-        $this->assertDatabaseHas('pemetaan_obat', [
-            'obat_generik_id' => ObatGenerik::where('kode_obat', 'OBT00006')->value('id'),
-            'obat_brand_id' => ObatBrand::where('kode_obat', 'OBT0119')->value('id'),
-        ]);
-    }
-
-    public function test_one_generik_many_brands(): void
-    {
-        $this->createGenerik('OBT00006', 'ACETYLCISTEIN');
-        $this->createBrand('OBT0119', 'RESFAR');
-        $this->createBrand('OBT0494', 'FLUIMUCIL');
-
-        $response = $this->preview(
-            [],
-            [
-                ['OBT00006', 'OBT0119', 'RESFAR', 298202],
-                ['OBT00006', 'OBT0494', 'FLUIMUCIL', 96308],
-            ]
-        );
-
-        $this->assertSummary($response, ['total' => 2, 'new' => 2, 'error' => 0]);
-
-        $this->confirm()->assertRedirect(route('pemetaan-obat.index'));
-        $this->assertDatabaseCount('pemetaan_obat', 2);
     }
 
     public function test_existing_brand_is_used_and_not_overwritten(): void
     {
-        $this->createGenerik('OBT00006');
-        $this->createBrand('OBT0119', 'NAMA BRAND LAMA', 500);
+        $this->createGenerik('OBT00006', 'ACETYLCISTEIN', 298202);
+        $this->createBrand('OBT0119', 'NAMA LAMA', 500);
 
-        $response = $this->preview(
-            [],
-            [['OBT00006', 'OBT0119', 'NAMA BRAND BARU', 900]]
-        );
+        $response = $this->preview([
+            ['OBT00006', 'ACETYLCISTEIN', 298202, 'OBT0119', 'NAMA BARU', 900],
+        ]);
 
-        $this->assertSummary($response, ['total' => 1, 'new' => 1, 'error' => 0, 'warning' => 1]);
+        $this->assertSummary($response, ['mapping' => 1, 'error' => 0, 'warning' => 1]);
 
         $this->confirm()->assertRedirect(route('pemetaan-obat.index'));
 
-        $this->assertDatabaseHas('obat_brand', [
-            'kode_obat' => 'OBT0119',
-            'nama_brand' => 'NAMA BRAND LAMA',
-            'harga_jual' => 500,
-        ]);
+        $this->assertDatabaseHas('obat_brand', ['kode_obat' => 'OBT0119', 'nama_brand' => 'NAMA LAMA', 'harga_jual' => 500]);
         $this->assertDatabaseCount('pemetaan_obat', 1);
     }
 
-    public function test_existing_mapping_is_not_duplicated(): void
-    {
-        $generik = $this->createGenerik('OBT00006');
-        $brand = $this->createBrand('OBT0119');
+    // ------------------------------------------------------------------
+    // Harga
+    // ------------------------------------------------------------------
 
-        PemetaanObat::create([
-            'obat_generik_id' => $generik->id,
-            'obat_brand_id' => $brand->id,
+    public function test_price_with_thousands_separator_is_parsed(): void
+    {
+        $response = $this->preview([
+            ['OBT00006', 'ACETYLCISTEIN', '298,202', 'OBT0119', 'RESFAR', '298.202'],
         ]);
 
-        $response = $this->preview(
-            [['OBT00006', 'ACETYLCISTEIN', 298202]],
-            [['OBT00006', 'OBT0119', 'RESFAR', 298202]]
-        );
-
-        $this->assertSummary($response, ['total' => 2, 'exists' => 2, 'new' => 0]);
+        $this->assertSummary($response, ['total' => 1, 'generik' => 1, 'brand' => 1, 'mapping' => 1, 'error' => 0]);
 
         $this->confirm()->assertRedirect(route('pemetaan-obat.index'));
-        $this->assertDatabaseCount('pemetaan_obat', 1);
+
+        $this->assertDatabaseHas('obat_generik', ['kode_obat' => 'OBT00006', 'harga_jual' => 298202]);
+        $this->assertDatabaseHas('obat_brand', ['kode_obat' => 'OBT0119', 'harga_jual' => 298202]);
     }
 
-    public function test_preview_shows_error_details_per_row(): void
+    public function test_non_numeric_price_produces_error(): void
     {
-        $this->createGenerik('OBT00006');
-        $this->createBrand('OBT0119');
+        $response = $this->preview([
+            ['OBT00006', 'ACETYLCISTEIN', 'abc', 'OBT0119', 'RESFAR', 'xyz'],
+        ]);
 
-        $response = $this->preview(
-            [],
-            [
-                ['OBT99999', 'OBT0119', 'RESFAR 30 ML INJ', 298202],
-                ['OBT00006', 'OBT0119', 'RESFAR 30 ML INJ', 298202],
-            ]
-        );
+        $this->assertSummary($response, ['error' => 1, 'mapping' => 0]);
+    }
 
-        $this->assertSummary($response, ['total' => 2, 'new' => 1, 'error' => 1]);
-        $response->assertSee('tidak ditemukan');
+    // ------------------------------------------------------------------
+    // Preview & transaction
+    // ------------------------------------------------------------------
+
+    public function test_preview_shows_grouped_structure(): void
+    {
+        $response = $this->preview([
+            ['OBT00006', 'ACETYLCISTEIN INF US 200 MG/ML - JS', 298202, 'OBT0119', 'RESFAR 30 ML INJ', 298202],
+            ['', '', '', 'OBT0494', 'FLUIMUCIL 10% AMPUL 300 MG/3 ML [ HA ]', 96308],
+        ]);
+
+        $response->assertOk();
+        $response->assertSee('ACETYLCISTEIN INF');
+        $response->assertSee('RESFAR 30 ML INJ');
+        $response->assertSee('FLUIMUCIL');
+
+        $groups = $response->viewData('groups');
+        $this->assertCount(1, $groups);
+        $this->assertSame('OBT00006', $groups[0]['kode']);
+        $this->assertCount(2, $groups[0]['brands']);
     }
 
     public function test_import_rolls_back_when_error_occurs(): void
     {
-        $this->createBrand('OBT0119', 'RESFAR 30 ML INJ');
-
-        $path = $this->makeImportFile(
-            [['OBT00006', 'ACETYLCISTEIN INF US 200 MG/ML - JS', 298202]],
-            [['OBT00006', 'OBT0119', 'RESFAR 30 ML INJ', 298202]]
-        );
+        $path = $this->makeImportFile([
+            ['OBT00006', 'ACETYLCISTEIN', 298202, 'OBT0119', 'RESFAR', 298202],
+        ]);
 
         $this->upload($path)->assertOk();
 
@@ -464,8 +599,35 @@ class PemetaanObatImportTest extends TestCase
         $response->assertSessionHas('error');
 
         $this->assertDatabaseCount('obat_generik', 0);
+        $this->assertDatabaseCount('obat_brand', 0);
         $this->assertDatabaseCount('pemetaan_obat', 0);
     }
+
+    // ------------------------------------------------------------------
+    // Template download
+    // ------------------------------------------------------------------
+
+    public function test_template_download_is_single_sheet(): void
+    {
+        $response = $this->get(route('pemetaan-obat.import.template'));
+
+        $response->assertOk();
+        $this->assertStringContainsString('spreadsheetml', $response->headers->get('content-type') ?? '');
+
+        $path = sys_get_temp_dir().'/pmo_tpl_'.uniqid().'.xlsx';
+        file_put_contents($path, $response->streamedContent());
+
+        $spreadsheet = IOFactory::load($path);
+        $sheetNames = $spreadsheet->getSheetNames();
+
+        $this->assertCount(1, $sheetNames);
+        $this->assertSame('Pemetaan Obat', $sheetNames[0]);
+        $this->assertSame(self::HEADERS, array_slice($spreadsheet->getActiveSheet()->toArray(null, false, false)[0], 0, 6));
+    }
+
+    // ------------------------------------------------------------------
+    // Halaman lain
+    // ------------------------------------------------------------------
 
     public function test_index_page_shows_import_buttons(): void
     {
@@ -497,16 +659,5 @@ class PemetaanObatImportTest extends TestCase
         $response->assertOk();
         $response->assertSee('RESFAR 30 ML INJ');
         $response->assertSee('searchableTable');
-    }
-
-    public function test_template_download(): void
-    {
-        $response = $this->get(route('pemetaan-obat.import.template'));
-
-        $response->assertOk();
-        $this->assertStringContainsString(
-            'spreadsheetml',
-            $response->headers->get('content-type') ?? ''
-        );
     }
 }

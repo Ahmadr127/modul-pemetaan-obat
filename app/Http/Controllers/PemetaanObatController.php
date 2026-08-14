@@ -17,13 +17,23 @@ use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 
 class PemetaanObatController extends Controller
 {
-    private const GENERIK_SHEET = 'OBAT_GENERIK';
+    private const HEADER_FIELDS = [
+        'kode generik' => 'kode_generik',
+        'nama generik/kandungan' => 'nama_generik',
+        'harga generik' => 'harga_generik',
+        'kode brand' => 'kode_brand',
+        'nama brand' => 'nama_brand',
+        'harga brand' => 'harga_brand',
+    ];
 
-    private const BRAND_SHEET = 'PEMETAAN_BRAND';
-
-    private const GENERIK_HEADERS = ['kode_obat', 'nama_generik', 'harga_jual'];
-
-    private const BRAND_HEADERS = ['kode_generik', 'kode_brand', 'nama_brand', 'harga_brand'];
+    private const HEADER_LABELS = [
+        'kode_generik' => 'Kode Generik',
+        'nama_generik' => 'Nama Generik/Kandungan',
+        'harga_generik' => 'Harga Generik',
+        'kode_brand' => 'Kode Brand',
+        'nama_brand' => 'Nama Brand',
+        'harga_brand' => 'Harga Brand',
+    ];
 
     private const MAX_UPLOAD_SIZE_KB = 5120;
 
@@ -365,55 +375,23 @@ class PemetaanObatController extends Controller
     }
 
     // ------------------------------------------------------------------
-    // Import Excel
+    // Import Excel (single sheet + current generik + grouping)
     // ------------------------------------------------------------------
 
     public function importTemplate()
     {
         $spreadsheet = new Spreadsheet;
+        $sheet = $spreadsheet->getActiveSheet();
+        $sheet->setTitle('Pemetaan Obat');
+        $sheet->fromArray([array_values(self::HEADER_LABELS)], null, 'A1');
+        $this->styleHeaderRow($sheet, 1, count(self::HEADER_LABELS));
 
-        $generikSheet = $spreadsheet->getActiveSheet();
-        $generikSheet->setTitle(self::GENERIK_SHEET);
-        $generikSheet->fromArray([self::GENERIK_HEADERS], null, 'A1');
-        $this->styleHeaderRow($generikSheet, 1, count(self::GENERIK_HEADERS));
-        $generikSheet->getColumnDimension('A')->setAutoSize(true);
-        $generikSheet->getColumnDimension('B')->setAutoSize(true);
-        $generikSheet->getColumnDimension('C')->setAutoSize(true);
-        $generikSheet->setCellValue('A3', 'Header berada di baris 1. Isi data mulai baris 2. Kode obat diperlakukan sebagai teks, harga harus berupa angka.');
-        $generikSheet->getStyle('A3:C3')->getFont()->setItalic(true)->setSize(9)->getColor()->setRGB('64748B');
+        foreach (['A', 'B', 'C', 'D', 'E', 'F'] as $column) {
+            $sheet->getColumnDimension($column)->setAutoSize(true);
+        }
 
-        $brandSheet = $spreadsheet->createSheet();
-        $brandSheet->setTitle(self::BRAND_SHEET);
-        $brandSheet->fromArray([self::BRAND_HEADERS], null, 'A1');
-        $this->styleHeaderRow($brandSheet, 1, count(self::BRAND_HEADERS));
-        $brandSheet->getColumnDimension('A')->setAutoSize(true);
-        $brandSheet->getColumnDimension('B')->setAutoSize(true);
-        $brandSheet->getColumnDimension('C')->setAutoSize(true);
-        $brandSheet->getColumnDimension('D')->setAutoSize(true);
-        $brandSheet->setCellValue('A4', 'Satu generik dapat memiliki banyak brand. Satu brand hanya boleh dipetakan ke satu generik (mapping aktif). Brand yang belum ada di database akan otomatis dibuat dari file ini.');
-        $brandSheet->getStyle('A4:D4')->getFont()->setItalic(true)->setSize(9)->getColor()->setRGB('64748B');
-
-        $contohSheet = $spreadsheet->createSheet();
-        $contohSheet->setTitle('CONTOH');
-        $contohSheet->setCellValue('A1', 'Berikut adalah CONTOH data untuk referensi. Data pada sheet CONTOH TIDAK akan diimport.');
-        $contohSheet->getStyle('A1:F1')->getFont()->setBold(true)->setSize(12);
-        $contohSheet->setCellValue('A3', 'Sheet OBAT_GENERIK');
-        $contohSheet->getStyle('A3:F3')->getFont()->setBold(true)->getColor()->setRGB('007774');
-        $contohSheet->fromArray([self::GENERIK_HEADERS], null, 'A4');
-        $contohSheet->fromArray([
-            ['OBT00006', 'ACETYLCISTEIN INF US 200 MG/ML - JS', 298202],
-            ['OBT00015', 'ACYCLOVIR CREAM 5 GR - JS', 13352],
-        ], null, 'A5');
-        $contohSheet->setCellValue('A8', 'Sheet PEMETAAN_BRAND');
-        $contohSheet->getStyle('A8:F8')->getFont()->setBold(true)->getColor()->setRGB('007774');
-        $contohSheet->fromArray([self::BRAND_HEADERS], null, 'A9');
-        $contohSheet->fromArray([
-            ['OBT00006', 'OBT0119', 'RESFAR 30 ML INJ', 298202],
-            ['OBT00006', 'OBT0494', 'FLUIMUCIL 10% AMPUL 300 MG/3 ML [ HA ]', 96308],
-            ['OBT00015', 'OBT02033', 'ZOTER CREAM', 97403],
-        ], null, 'A10');
-
-        $spreadsheet->setActiveSheetIndex(0);
+        $sheet->setCellValue('H1', 'Petunjuk: baris 1 adalah header. Isi data mulai baris 2. Kode Generik wajib diisi pada baris pertama sebuah grup; kosongkan pada baris brand lanjutan (brand mengikuti generik aktif). Harga harus berupa angka. Jangan hapus kolom.');
+        $sheet->getStyle('H1')->getFont()->setItalic(true)->setSize(9)->getColor()->setRGB('64748B');
 
         $writer = new Xlsx($spreadsheet);
 
@@ -447,14 +425,15 @@ class PemetaanObatController extends Controller
 
         if (! empty($parsed['errors'])) {
             return redirect()->route('pemetaan-obat.index')
-                ->with('error', implode(' ', $parsed['errors']));
+                ->with('error', 'Import gagal: '.implode(' ', $parsed['errors']));
         }
 
-        $built = $this->buildImportRows($parsed);
+        $grouped = $this->groupRows($parsed['rows'], $parsed['headerMap']);
+        $built = $this->buildImportRows($grouped);
 
         if ($built['summary']['total'] === 0) {
             return redirect()->route('pemetaan-obat.index')
-                ->with('error', 'File tidak memiliki data pada sheet '.self::GENERIK_SHEET.' atau '.self::BRAND_SHEET.'.');
+                ->with('error', 'File tidak memiliki data.');
         }
 
         $tempDir = Storage::disk('local')->path('import-temp');
@@ -468,18 +447,9 @@ class PemetaanObatController extends Controller
         $request->session()->put('import_temp_file', $basename);
 
         return view('pemetaan-obat.import-preview', [
-            'rows' => $built['rows'],
+            'groups' => $built['groups'],
+            'orphans' => $built['orphans'],
             'summary' => $built['summary'],
-            'columns' => [
-                ['key' => 'sheet', 'label' => 'Sheet'],
-                ['key' => 'row', 'label' => 'Baris'],
-                ['key' => 'kode', 'label' => 'Kode'],
-                ['key' => 'nama', 'label' => 'Nama'],
-                ['key' => 'harga', 'label' => 'Harga'],
-                ['key' => 'status', 'label' => 'Status'],
-                ['key' => 'message', 'label' => 'Keterangan'],
-            ],
-            'tableRows' => $this->toPreviewRows($built['rows']),
             'fileName' => $request->file('file')->getClientOriginalName(),
         ]);
     }
@@ -513,10 +483,11 @@ class PemetaanObatController extends Controller
             @unlink($tempPath);
 
             return redirect()->route('pemetaan-obat.index')
-                ->with('error', implode(' ', $parsed['errors']));
+                ->with('error', 'Import gagal: '.implode(' ', $parsed['errors']));
         }
 
-        $built = $this->buildImportRows($parsed);
+        $grouped = $this->groupRows($parsed['rows'], $parsed['headerMap']);
+        $built = $this->buildImportRows($grouped);
 
         if ($built['summary']['total'] === 0) {
             @unlink($tempPath);
@@ -558,78 +529,58 @@ class PemetaanObatController extends Controller
 
         $spreadsheet = IOFactory::load($path);
 
-        $errors = [];
+        $headerMap = null;
+        $rawRows = [];
+        $bestMissing = array_values(self::HEADER_LABELS);
 
-        $generikSheet = $spreadsheet->getSheetByName(self::GENERIK_SHEET);
-        if ($generikSheet === null) {
-            $errors[] = 'Sheet '.self::GENERIK_SHEET.' tidak ditemukan.';
-            $generikRows = [];
-        } else {
-            $generikRows = $this->readSheet($generikSheet, self::GENERIK_HEADERS, self::GENERIK_SHEET, $errors);
-        }
-
-        $brandSheet = $spreadsheet->getSheetByName(self::BRAND_SHEET);
-        if ($brandSheet === null) {
-            $errors[] = 'Sheet '.self::BRAND_SHEET.' tidak ditemukan.';
-            $brandRows = [];
-        } else {
-            $brandRows = $this->readSheet($brandSheet, self::BRAND_HEADERS, self::BRAND_SHEET, $errors);
-        }
-
-        return compact('generikRows', 'brandRows', 'errors');
-    }
-
-    private function readSheet(\PhpOffice\PhpSpreadsheet\Worksheet\Worksheet $sheet, array $requiredHeaders, string $sheetName, array &$errors): array
-    {
-        $rows = $sheet->toArray(null, false, false);
-
-        if (count($rows) === 0) {
-            return [];
-        }
-
-        $headers = array_shift($rows);
-
-        $headerMap = [];
-        foreach ($headers as $index => $header) {
-            $key = str_replace("\xEF\xBB\xBF", '', strtolower(trim((string) $header)));
-            if (in_array($key, $requiredHeaders, true)) {
-                $headerMap[$key] = $index;
-            }
-        }
-
-        foreach ($requiredHeaders as $required) {
-            if (! isset($headerMap[$required])) {
-                $errors[] = 'Header sheet '.$sheetName.' tidak sesuai. Kolom wajib: '.implode(', ', $requiredHeaders).'.';
-
-                return [];
-            }
-        }
-
-        $parsed = [];
-        foreach ($rows as $i => $row) {
-            $values = $this->extractRow($row, $headerMap, $requiredHeaders);
-            if ($this->isEmptyRow($values)) {
+        foreach ($spreadsheet->getAllSheets() as $sheet) {
+            $rows = $sheet->toArray(null, false, false);
+            if (empty($rows)) {
                 continue;
             }
 
-            $parsed[] = [
-                'type' => $sheetName === self::GENERIK_SHEET ? 'generik' : 'brand',
-                'row' => $i + 2,
-                'values' => $values,
-            ];
+            $map = $this->mapHeaders($rows[0]);
+            if (empty($map['missing'])) {
+                $headerMap = $map['found'];
+                $rawRows = array_slice($rows, 1);
+                break;
+            }
+
+            if (count($map['missing']) < count($bestMissing)) {
+                $bestMissing = $map['missing'];
+            }
         }
 
-        return $parsed;
+        if ($headerMap === null) {
+            $errors = [];
+            foreach ($bestMissing as $label) {
+                $errors[] = 'Kolom "'.$label.'" tidak ditemukan.';
+            }
+
+            return ['errors' => $errors, 'rows' => [], 'headerMap' => null];
+        }
+
+        return ['errors' => [], 'rows' => $rawRows, 'headerMap' => $headerMap];
     }
 
-    private function extractRow(array $row, array $headerMap, array $fields): array
+    private function mapHeaders(array $headerRow): array
     {
-        $values = [];
-        foreach ($fields as $field) {
-            $values[$field] = $this->cellValue($row, $headerMap, $field);
+        $found = [];
+        foreach ($headerRow as $index => $header) {
+            $key = strtolower(trim(str_replace("\xEF\xBB\xBF", '', (string) $header)));
+            if (isset(self::HEADER_FIELDS[$key]) && ! isset($found[self::HEADER_FIELDS[$key]])) {
+                $found[self::HEADER_FIELDS[$key]] = $index;
+            }
         }
 
-        return $values;
+        $missing = [];
+        foreach (self::HEADER_LABELS as $field => $label) {
+            if (! isset($found[$field])) {
+                $missing[] = $label;
+            }
+        }
+
+        return ['found' => $found, 'missing' => $missing];
     }
 
     private function cellValue(array $row, array $headerMap, string $key): mixed
@@ -651,6 +602,16 @@ class PemetaanObatController extends Controller
         return trim(str_replace("\xEF\xBB\xBF", '', (string) $value));
     }
 
+    private function extractValues(array $row, array $headerMap): array
+    {
+        $values = [];
+        foreach (array_keys(self::HEADER_LABELS) as $field) {
+            $values[$field] = $this->cellValue($row, $headerMap, $field);
+        }
+
+        return $values;
+    }
+
     private function isEmptyRow(array $values): bool
     {
         foreach ($values as $value) {
@@ -662,8 +623,119 @@ class PemetaanObatController extends Controller
         return true;
     }
 
+    private function normalizeNumeric($value): mixed
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        if (is_int($value) || is_float($value)) {
+            return $value;
+        }
+
+        $str = trim((string) $value);
+        if ($str === '') {
+            return null;
+        }
+
+        // grouping ribuan Indonesia: 298.202 atau 1.234.567
+        if (preg_match('/^-?\d{1,3}(\.\d{3})+$/', $str)) {
+            return (int) str_replace('.', '', $str);
+        }
+
+        // grouping ribuan US: 298,202 atau 1,234,567
+        if (preg_match('/^-?\d{1,3}(,\d{3})+$/', $str)) {
+            return (int) str_replace(',', '', $str);
+        }
+
+        if (is_numeric($str)) {
+            return (int) $str;
+        }
+
+        return $str;
+    }
+
+    private function groupRows(array $rawRows, array $headerMap): array
+    {
+        $groups = [];
+        $orphans = [];
+        $seenGenerik = [];
+        $currentIndex = null;
+        $totalRows = 0;
+
+        foreach ($rawRows as $i => $row) {
+            $values = $this->extractValues($row, $headerMap);
+
+            if ($this->isEmptyRow($values)) {
+                continue;
+            }
+
+            $totalRows++;
+            $excelRow = $i + 2;
+
+            $kodeGenerik = trim((string) ($values['kode_generik'] ?? ''));
+            $namaGenerik = trim((string) ($values['nama_generik'] ?? ''));
+            $hargaGenerik = $values['harga_generik'] ?? '';
+            $kodeBrand = trim((string) ($values['kode_brand'] ?? ''));
+            $namaBrand = trim((string) ($values['nama_brand'] ?? ''));
+            $hargaBrand = $values['harga_brand'] ?? '';
+            $hasBrand = $kodeBrand !== '' || $namaBrand !== '' || $hargaBrand !== '';
+
+            if ($kodeGenerik !== '') {
+                if (isset($seenGenerik[$kodeGenerik])) {
+                    $currentIndex = $seenGenerik[$kodeGenerik];
+                    if ($groups[$currentIndex]['nama'] !== $namaGenerik) {
+                        $groups[$currentIndex]['warnings'][] = 'Baris '.$excelRow.': kode generik "'.$kodeGenerik.'" sudah muncul sebelumnya di file dengan nama berbeda; data pertama yang digunakan.';
+                    }
+                } else {
+                    $currentIndex = count($groups);
+                    $groups[] = [
+                        'row' => $excelRow,
+                        'kode' => $kodeGenerik,
+                        'nama' => $namaGenerik,
+                        'harga_raw' => $hargaGenerik,
+                        'harga' => null,
+                        'brands' => [],
+                        'errors' => [],
+                        'warnings' => [],
+                        'status' => null,
+                        'generik_id' => null,
+                    ];
+                    $seenGenerik[$kodeGenerik] = $currentIndex;
+                }
+            } elseif ($currentIndex === null) {
+                $orphans[] = [
+                    'row' => $excelRow,
+                    'kode' => $kodeBrand,
+                    'nama' => $namaBrand,
+                    'errors' => ['Kode generik kosong dan belum ada generik aktif (baris brand tanpa parent generik).'],
+                ];
+                continue;
+            }
+
+            if ($hasBrand) {
+                $groups[$currentIndex]['brands'][] = [
+                    'row' => $excelRow,
+                    'kode' => $kodeBrand,
+                    'nama' => $namaBrand,
+                    'harga_raw' => $hargaBrand,
+                    'harga' => null,
+                    'errors' => [],
+                    'warnings' => [],
+                    'status' => null,
+                    'brand_id' => null,
+                ];
+            }
+        }
+
+        return compact('groups', 'orphans', 'totalRows');
+    }
+
     private function buildImportRows(array $parsed): array
     {
+        $groups = $parsed['groups'];
+        $orphans = $parsed['orphans'];
+
         $generikByKode = ObatGenerik::pluck('id', 'kode_obat')->all();
         $generikNames = ObatGenerik::pluck('nama_generik', 'kode_obat')->all();
         $brandByKode = ObatBrand::pluck('id', 'kode_obat')->all();
@@ -673,315 +745,262 @@ class PemetaanObatController extends Controller
             ->map(fn ($p) => $p->obat_generik_id.':'.$p->obat_brand_id)
             ->all();
 
-        $rows = [];
-        $seenGenerikCodes = [];
-        $validGenerikCodes = [];
+        // Validasi master generik (satu master per kode, bukan per baris)
+        foreach ($groups as $idx => &$group) {
+            $errors = [];
+            $warnings = [];
 
-        foreach ($parsed['generikRows'] as $raw) {
-            $row = $this->validateGenerikRow($raw, $generikByKode, $generikNames, $seenGenerikCodes);
-            if ($row['status'] === 'new') {
-                $validGenerikCodes[$row['kode']] = true;
+            if ($group['kode'] === '') {
+                $errors[] = 'kode generik wajib diisi.';
             }
-            $rows[] = $row;
-        }
 
-        $seenPairs = [];
-        $seenBrandGenerik = [];
-        foreach ($parsed['brandRows'] as $raw) {
-            $rows[] = $this->validateBrandRow(
-                $raw,
-                $generikByKode,
-                $brandByKode,
-                $brandNames,
-                $brandToGenerik,
-                $existingPairs,
-                $validGenerikCodes,
-                $seenPairs,
-                $seenBrandGenerik
-            );
-        }
+            if ($group['nama'] === '') {
+                $errors[] = 'nama generik/kandungan wajib diisi.';
+            }
 
-        $statuses = collect($rows)->pluck('status')->countBy();
+            $harga = $this->normalizeNumeric($group['harga_raw']);
+            if ($harga !== null && (is_string($harga) || (is_float($harga) && (int) $harga != $harga))) {
+                $errors[] = 'harga generik harus berupa angka bulat.';
+                $harga = null;
+            } else {
+                $harga = $harga === null ? null : (int) $harga;
+            }
+            $group['harga'] = $harga;
+            $group['errors'] = $errors;
 
-        $summary = [
-            'total' => count($rows),
-            'new' => $statuses->get('new', 0),
-            'exists' => $statuses->get('exists', 0),
-            'duplicate' => $statuses->get('duplicate', 0),
-            'error' => $statuses->get('error', 0),
-            'warning' => collect($rows)->filter(fn ($r) => count($r['warnings']) > 0)->count(),
-        ];
-
-        return compact('rows', 'summary');
-    }
-
-    private function validateGenerikRow(array $raw, array $generikByKode, array $generikNames, array &$seenGenerikCodes): array
-    {
-        $values = $raw['values'];
-
-        $kode = trim((string) ($values['kode_obat'] ?? ''));
-        $nama = trim((string) ($values['nama_generik'] ?? ''));
-        $harga = $values['harga_jual'] ?? '';
-
-        $errors = [];
-        $warnings = [];
-
-        if ($kode === '') {
-            $errors[] = 'kode_obat wajib diisi.';
-        }
-
-        if ($nama === '') {
-            $errors[] = 'nama_generik wajib diisi.';
-        }
-
-        if ($harga !== '' && ! is_numeric($harga)) {
-            $errors[] = 'harga_jual harus berupa angka.';
-        }
-
-        $status = 'error';
-        $generikId = null;
-
-        if (empty($errors)) {
-            if (isset($seenGenerikCodes[$kode])) {
-                $status = 'duplicate';
-                $warnings[] = 'kode_obat duplikat dalam file (baris '.$seenGenerikCodes[$kode].').';
-            } elseif (isset($generikByKode[$kode])) {
-                $status = 'exists';
-                $generikId = $generikByKode[$kode];
-                if ($generikNames[$kode] !== $nama) {
+            if (! empty($errors)) {
+                $group['status'] = 'error';
+            } elseif (isset($generikByKode[$group['kode']])) {
+                $group['status'] = 'exists';
+                $group['generik_id'] = $generikByKode[$group['kode']];
+                if ($generikNames[$group['kode']] !== $group['nama']) {
                     $warnings[] = 'Nama generik berbeda dengan data existing, data existing tidak akan diubah.';
                 }
             } else {
-                $status = 'new';
+                $group['status'] = 'new';
             }
+
+            $group['warnings'] = array_merge($warnings, $group['warnings']);
+            $group['message'] = $this->buildMessage($group['errors'], $group['warnings']);
         }
+        unset($group);
 
-        return [
-            'type' => 'generik',
-            'row' => $raw['row'],
-            'kode' => $kode,
-            'nama' => $nama,
-            'harga' => $harga === '' ? null : (int) $harga,
-            'status' => $status,
-            'errors' => $errors,
-            'warnings' => $warnings,
-            'message' => $this->buildMessage($errors, $warnings),
-            'generik_id' => $generikId,
-        ];
-    }
+        // Validasi brand per grup
+        $seenPairs = [];
+        $seenBrandGenerik = [];
 
-    private function validateBrandRow(
-        array $raw,
-        array $generikByKode,
-        array $brandByKode,
-        array $brandNames,
-        array $brandToGenerik,
-        array $existingPairs,
-        array $validGenerikCodes,
-        array &$seenPairs,
-        array &$seenBrandGenerik
-    ): array {
-        $values = $raw['values'];
+        foreach ($groups as $idx => &$group) {
+            $kodeGenerik = $group['kode'];
 
-        $kodeGenerik = trim((string) ($values['kode_generik'] ?? ''));
-        $kodeBrand = trim((string) ($values['kode_brand'] ?? ''));
-        $namaBrand = trim((string) ($values['nama_brand'] ?? ''));
-        $hargaBrand = $values['harga_brand'] ?? '';
+            foreach ($group['brands'] as &$brand) {
+                $errors = [];
+                $warnings = [];
 
-        $errors = [];
-        $warnings = [];
-
-        if ($kodeGenerik === '') {
-            $errors[] = 'kode_generik wajib diisi.';
-        }
-
-        if ($kodeBrand === '') {
-            $errors[] = 'kode_brand wajib diisi.';
-        }
-
-        if ($hargaBrand !== '' && ! is_numeric($hargaBrand)) {
-            $errors[] = 'harga_brand harus berupa angka.';
-        }
-
-        $generikId = null;
-        $brandId = null;
-        $brandIsNew = false;
-
-        if ($kodeGenerik !== '') {
-            if (isset($generikByKode[$kodeGenerik])) {
-                $generikId = $generikByKode[$kodeGenerik];
-            } elseif (! isset($validGenerikCodes[$kodeGenerik])) {
-                $errors[] = 'kode generik "'.$kodeGenerik.'" tidak ditemukan.';
-            }
-        }
-
-        if ($kodeBrand !== '') {
-            if (isset($brandByKode[$kodeBrand])) {
-                $brandId = $brandByKode[$kodeBrand];
-                if ($namaBrand !== '' && $brandNames[$kodeBrand] !== $namaBrand) {
-                    $warnings[] = 'Nama brand berbeda dengan data existing, data existing tidak akan diubah.';
+                if ($group['status'] === 'error') {
+                    $errors[] = 'Generik induk tidak valid, mapping tidak dapat dibuat.';
                 }
-            } else {
-                $brandIsNew = true;
-                if ($namaBrand === '') {
-                    $errors[] = 'nama_brand wajib diisi (brand "'.$kodeBrand.'" belum ada di database dan akan dibuat).';
+
+                if ($brand['kode'] === '') {
+                    $errors[] = 'kode brand wajib diisi.';
                 }
-            }
-        }
 
-        $status = 'error';
-
-        if (empty($errors)) {
-            $pairKey = $kodeGenerik.'|'.$kodeBrand;
-
-            if (isset($seenPairs[$pairKey])) {
-                $status = 'duplicate';
-                $warnings[] = 'Pasangan kode generik + kode brand sudah ada di file (baris '.$seenPairs[$pairKey].').';
-            } elseif (isset($seenBrandGenerik[$kodeBrand]) && $seenBrandGenerik[$kodeBrand] !== $kodeGenerik) {
-                $errors[] = 'Brand "'.$kodeBrand.'" sudah terpetakan ke obat generik lain di file (baris '.$seenBrandGenerik[$kodeBrand].').';
-            } else {
-                $seenPairs[$pairKey] = $raw['row'];
-                $seenBrandGenerik[$kodeBrand] = $kodeGenerik;
-
-                if ($brandId !== null && isset($brandToGenerik[$brandId])) {
-                    $existingGenerikId = (int) $brandToGenerik[$brandId];
-                    if ($generikId !== null && $existingGenerikId === (int) $generikId) {
-                        $status = 'exists';
-                    } else {
-                        $errors[] = 'Brand "'.$kodeBrand.'" sudah terpetakan ke obat generik lain.';
-                    }
-                } elseif ($brandId !== null && $generikId !== null) {
-                    $status = in_array($generikId.':'.$brandId, $existingPairs, true) ? 'exists' : 'new';
+                $hargaBrand = $this->normalizeNumeric($brand['harga_raw']);
+                if ($hargaBrand !== null && (is_string($hargaBrand) || (is_float($hargaBrand) && (int) $hargaBrand != $hargaBrand))) {
+                    $errors[] = 'harga brand harus berupa angka bulat.';
+                    $hargaBrand = null;
                 } else {
-                    $status = 'new';
+                    $hargaBrand = $hargaBrand === null ? null : (int) $hargaBrand;
+                }
+                $brand['harga'] = $hargaBrand;
+
+                $brandId = null;
+                if ($brand['kode'] !== '') {
+                    if (isset($brandByKode[$brand['kode']])) {
+                        $brandId = $brandByKode[$brand['kode']];
+                        if ($brand['nama'] !== '' && $brandNames[$brand['kode']] !== $brand['nama']) {
+                            $warnings[] = 'Nama brand berbeda dengan data existing, data existing tidak akan diubah.';
+                        }
+                    } elseif ($brand['nama'] === '') {
+                        $errors[] = 'nama brand wajib diisi (brand belum ada di database dan akan dibuat).';
+                    }
+                }
+
+                $status = 'error';
+
+                if (empty($errors)) {
+                    $pairKey = $kodeGenerik.'|'.$brand['kode'];
+
+                    if (isset($seenPairs[$pairKey])) {
+                        $status = 'duplicate';
+                        $warnings[] = 'Pasangan generik + brand sudah ada di file (baris '.$seenPairs[$pairKey].').';
+                    } elseif (isset($seenBrandGenerik[$brand['kode']]) && $seenBrandGenerik[$brand['kode']] !== $kodeGenerik) {
+                        $errors[] = 'Brand "'.$brand['kode'].'" sudah terpetakan ke obat generik lain di file (baris '.$seenBrandGenerik[$brand['kode']].').';
+                    } else {
+                        $seenPairs[$pairKey] = $brand['row'];
+                        $seenBrandGenerik[$brand['kode']] = $kodeGenerik;
+
+                        $generikId = $group['generik_id'];
+
+                        if ($brandId !== null && isset($brandToGenerik[$brandId])) {
+                            $existingGenerikId = (int) $brandToGenerik[$brandId];
+                            if ($generikId !== null && $existingGenerikId === (int) $generikId) {
+                                $status = 'exists';
+                            } else {
+                                $errors[] = 'Brand "'.$brand['kode'].'" sudah terpetakan ke obat generik lain.';
+                            }
+                        } elseif ($brandId !== null && $generikId !== null) {
+                            $status = in_array($generikId.':'.$brandId, $existingPairs, true) ? 'exists' : 'new';
+                        } else {
+                            $status = 'new';
+                        }
+                    }
+                }
+
+                $brand['status'] = $status;
+                $brand['brand_id'] = $brandId;
+                $brand['errors'] = $errors;
+                $brand['warnings'] = $warnings;
+                $brand['message'] = $this->buildMessage($errors, $warnings);
+            }
+            unset($brand);
+        }
+        unset($group);
+
+        $brandCount = 0;
+        $mappingCount = 0;
+        $newCount = 0;
+        $existsCount = 0;
+        $duplicateCount = 0;
+        $brandErrorCount = 0;
+        $generikErrorCount = 0;
+        $warningGroupCount = 0;
+
+        foreach ($groups as $group) {
+            if ($group['status'] === 'error') {
+                $generikErrorCount++;
+            }
+            if (count($group['warnings']) > 0) {
+                $warningGroupCount++;
+            }
+
+            foreach ($group['brands'] as $brand) {
+                $brandCount++;
+                if (in_array($brand['status'], ['new', 'exists'], true)) {
+                    $mappingCount++;
+                }
+                if ($brand['status'] === 'new') {
+                    $newCount++;
+                }
+                if ($brand['status'] === 'exists') {
+                    $existsCount++;
+                }
+                if ($brand['status'] === 'duplicate') {
+                    $duplicateCount++;
+                }
+if ($brand['status'] === 'error' && $group['status'] !== 'error') {
+                    $brandErrorCount++;
+                }
+                if (count($brand['warnings']) > 0) {
+                    $warningGroupCount++;
                 }
             }
         }
 
-        return [
-            'type' => 'brand',
-            'row' => $raw['row'],
-            'kode' => $kodeBrand,
-            'nama' => $namaBrand,
-            'harga' => $hargaBrand === '' ? null : (int) $hargaBrand,
-            'kode_generik' => $kodeGenerik,
-            'kode_brand' => $kodeBrand,
-            'brand_is_new' => $brandIsNew,
-            'status' => $status,
-            'errors' => $errors,
-            'warnings' => $warnings,
-            'message' => $this->buildMessage($errors, $warnings),
-            'generik_id' => $generikId,
-            'brand_id' => $brandId,
+        $summary = [
+            'total' => $parsed['totalRows'],
+            'generik' => count($groups),
+            'brand' => $brandCount,
+            'mapping' => $mappingCount,
+            'new' => $newCount,
+            'exists' => $existsCount,
+            'duplicate' => $duplicateCount,
+            'error' => $generikErrorCount + $brandErrorCount + count($orphans),
+            'warning' => $warningGroupCount,
         ];
+
+        return compact('groups', 'orphans', 'summary');
     }
 
     private function performImport(array $built): array
     {
-        $rows = $built['rows'];
+        $groups = $built['groups'];
+        $orphans = $built['orphans'];
         $imported = 0;
         $skipped = 0;
         $failed = 0;
 
         $generikIdByKode = ObatGenerik::pluck('id', 'kode_obat')->all();
 
-        foreach ($rows as $row) {
-            if ($row['type'] !== 'generik') {
+        // 1. Resolve/create satu master generik per kode (jangan buat duplikat)
+        foreach ($groups as $group) {
+            if ($group['status'] === 'error') {
                 continue;
             }
 
-            if ($row['status'] === 'error') {
-                $failed++;
-
-                continue;
-            }
-
-            if (in_array($row['status'], ['exists', 'duplicate'], true)) {
-                $skipped++;
-
-                continue;
-            }
-
-            $obatGenerik = ObatGenerik::create([
-                'kode_obat' => $row['kode'],
-                'nama_generik' => $row['nama'],
-                'harga_jual' => $row['harga'],
-            ]);
-            $generikIdByKode[$row['kode']] = $obatGenerik->id;
-            $imported++;
+            $obatGenerik = ObatGenerik::firstOrCreate(
+                ['kode_obat' => $group['kode']],
+                ['nama_generik' => $group['nama'], 'harga_jual' => $group['harga']]
+            );
+            $generikIdByKode[$group['kode']] = $obatGenerik->id;
         }
 
-        foreach ($rows as $row) {
-            if ($row['type'] !== 'brand') {
-                continue;
-            }
-
-            if ($row['status'] === 'error') {
-                $failed++;
-
-                continue;
-            }
-
-            if (in_array($row['status'], ['exists', 'duplicate'], true)) {
-                $skipped++;
+        // 2. Resolve brand + buat mapping
+        foreach ($groups as $group) {
+            if (empty($group['brands'])) {
+                if ($group['status'] === 'error') {
+                    $failed++;
+                } elseif ($group['status'] === 'exists') {
+                    $skipped++;
+                } else {
+                    $imported++;
+                }
 
                 continue;
             }
 
-            $generikId = $generikIdByKode[$row['kode_generik']] ?? null;
+            $generikId = $generikIdByKode[$group['kode']] ?? null;
 
-            if ($generikId === null) {
-                $failed++;
+            foreach ($group['brands'] as $brand) {
+                if ($brand['status'] === 'error') {
+                    $failed++;
+                    continue;
+                }
 
-                continue;
+                if (in_array($brand['status'], ['exists', 'duplicate'], true)) {
+                    $skipped++;
+                    continue;
+                }
+
+                if ($generikId === null) {
+                    $failed++;
+                    continue;
+                }
+
+                $brandId = $brand['brand_id'];
+                if ($brandId === null) {
+                    $obatBrand = ObatBrand::firstOrCreate(
+                        ['kode_obat' => $brand['kode']],
+                        ['nama_brand' => $brand['nama'], 'harga_jual' => $brand['harga']]
+                    );
+                    $brandId = $obatBrand->id;
+                }
+
+                PemetaanObat::firstOrCreate([
+                    'obat_generik_id' => $generikId,
+                    'obat_brand_id' => $brandId,
+                ]);
+                $imported++;
             }
-
-            $brandId = $row['brand_id'];
-            if ($brandId === null) {
-                $obatBrand = ObatBrand::firstOrCreate(
-                    ['kode_obat' => $row['kode_brand']],
-                    [
-                        'nama_brand' => $row['nama'],
-                        'harga_jual' => $row['harga'],
-                    ]
-                );
-                $brandId = $obatBrand->id;
-            }
-
-            PemetaanObat::firstOrCreate([
-                'obat_generik_id' => $generikId,
-                'obat_brand_id' => $brandId,
-            ]);
-            $imported++;
         }
+
+        $failed += count($orphans);
 
         return [
-            'total' => count($rows),
+            'total' => $built['summary']['total'],
             'imported' => $imported,
             'skipped' => $skipped,
             'failed' => $failed,
         ];
-    }
-
-    private function toPreviewRows(array $rows): array
-    {
-        $labels = ['new' => 'Baru', 'exists' => 'Sudah Ada', 'duplicate' => 'Duplicate', 'error' => 'Error'];
-
-        return collect($rows)->map(function ($row) use ($labels) {
-            $kode = $row['type'] === 'generik'
-                ? ($row['kode'] ?: '-')
-                : (($row['kode_generik'] ?: '-').' → '.($row['kode_brand'] ?: '-'));
-
-            return [
-                'sheet' => $row['type'] === 'generik' ? self::GENERIK_SHEET : self::BRAND_SHEET,
-                'row' => $row['row'],
-                'kode' => $kode,
-                'nama' => $row['nama'] ?: '-',
-                'harga' => $row['harga'] === null || $row['harga'] === '' ? '-' : number_format((int) $row['harga'], 0, ',', '.'),
-                'status' => $labels[$row['status']] ?? $row['status'],
-                'message' => $row['message'] ?: '-',
-            ];
-        })->values()->all();
     }
 
     private function buildMessage(array $errors, array $warnings): string
