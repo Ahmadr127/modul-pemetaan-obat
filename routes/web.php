@@ -104,6 +104,7 @@ Route::middleware('auth')->group(function () {
         Route::get('pemetaan-obat/import/template', [PemetaanObatController::class, 'importTemplate'])->name('pemetaan-obat.import.template');
         Route::post('pemetaan-obat/import/preview', [PemetaanObatController::class, 'importPreview'])->name('pemetaan-obat.import.preview');
         Route::post('pemetaan-obat/import/confirm', [PemetaanObatController::class, 'importConfirm'])->name('pemetaan-obat.import.confirm');
+        Route::get('pemetaan-obat/import/log', [PemetaanObatController::class, 'importLogIndex'])->name('pemetaan-obat.import.log');
     });
 
 });

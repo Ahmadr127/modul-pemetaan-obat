@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\ImportLog;
 use App\Models\ObatBrand;
 use App\Models\ObatGenerik;
 use App\Models\PemetaanObat;
@@ -601,6 +602,99 @@ class PemetaanObatImportTest extends TestCase
         $this->assertDatabaseCount('obat_generik', 0);
         $this->assertDatabaseCount('obat_brand', 0);
         $this->assertDatabaseCount('pemetaan_obat', 0);
+    }
+
+    // ------------------------------------------------------------------
+    // Log import
+    // ------------------------------------------------------------------
+
+    public function test_successful_import_creates_success_log(): void
+    {
+        $this->preview([
+            ['OBT00006', 'ACETYLCISTEIN', 298202, 'OBT0119', 'RESFAR', 298202],
+        ])->assertOk();
+
+        $this->confirm()->assertRedirect(route('pemetaan-obat.index'));
+
+        $this->assertDatabaseHas('import_logs', [
+            'status' => ImportLog::STATUS_SUCCESS,
+            'total' => 1,
+            'imported' => 1,
+            'skipped' => 0,
+            'failed' => 0,
+        ]);
+    }
+
+    public function test_partial_import_creates_warning_log(): void
+    {
+        $this->preview([
+            ['', '', '', 'OBT0117', 'ORPHAN 1', 100],
+            ['', '', '', 'OBT0116', 'ORPHAN 2', 100],
+            ['OBT00006', 'ACETYLCISTEIN', 298202, 'OBT0119', 'RESFAR', 298202],
+            ['', '', '', 'OBT0118', 'FLUIMUCIL', 96308],
+        ])->assertOk();
+
+        $this->confirm()->assertRedirect(route('pemetaan-obat.index'));
+
+        $this->assertDatabaseHas('import_logs', [
+            'status' => ImportLog::STATUS_WARNING,
+            'total' => 4,
+            'imported' => 2,
+            'skipped' => 0,
+            'failed' => 2,
+        ]);
+    }
+
+    public function test_rejected_file_creates_error_log(): void
+    {
+        $headers = ['Kode Generik', 'Nama Generik/Kandungan', 'Harga Generik', 'Kode Brand', 'Harga Brand'];
+        $path = $this->makeWorkbook([['OBT00006', 'ACETYLCISTEIN', 298202, 'OBT0119', 298202]], $headers);
+
+        $this->upload($path);
+
+        $log = ImportLog::where('status', ImportLog::STATUS_ERROR)->latest()->first();
+        $this->assertNotNull($log);
+        $this->assertNotNull($log->errors);
+        $this->assertStringContainsString('Nama Brand', implode(' ', $log->errors));
+    }
+
+    public function test_rollback_import_creates_error_log(): void
+    {
+        $path = $this->makeImportFile([
+            ['OBT00006', 'ACETYLCISTEIN', 298202, 'OBT0119', 'RESFAR', 298202],
+        ]);
+
+        $this->upload($path)->assertOk();
+
+        PemetaanObat::saving(function () {
+            throw new \RuntimeException('forced failure');
+        });
+
+        $this->confirm();
+
+        $log = ImportLog::where('status', ImportLog::STATUS_ERROR)->latest()->first();
+        $this->assertNotNull($log);
+        $this->assertStringContainsString('forced failure', implode(' ', $log->errors));
+    }
+
+    public function test_import_log_page_lists_logs(): void
+    {
+        ImportLog::create([
+            'user_id' => auth()->id(),
+            'file_name' => 'import.xlsx',
+            'status' => ImportLog::STATUS_ERROR,
+            'total' => 1,
+            'imported' => 0,
+            'skipped' => 0,
+            'failed' => 1,
+            'errors' => ['Kolom "Nama Brand" tidak ditemukan.'],
+        ]);
+
+        $response = $this->get(route('pemetaan-obat.import.log'));
+
+        $response->assertOk();
+        $response->assertSee('import.xlsx');
+        $response->assertSee('Kolom "Nama Brand" tidak ditemukan');
     }
 
     // ------------------------------------------------------------------

@@ -23,6 +23,9 @@
             <a href="{{ route('pemetaan-obat.brand') }}" class="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-sp-primary border border-sp-primary/30 rounded-md hover:bg-sp-primary/5 transition-colors">
                 <i class="bi bi-bag-check"></i> Obat Brand
             </a>
+            <a href="{{ route('pemetaan-obat.import.log') }}" class="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-sp-primary border border-sp-primary/30 rounded-md hover:bg-sp-primary/5 transition-colors">
+                <i class="bi bi-journal-text"></i> Log Import
+            </a>
         </x-slot>
 
         <form method="GET" action="{{ route('pemetaan-obat.index') }}" class="flex flex-col sm:flex-row gap-3 items-end">

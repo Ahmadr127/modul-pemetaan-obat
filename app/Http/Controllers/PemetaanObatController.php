@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\ImportLog;
 use App\Models\ObatBrand;
 use App\Models\ObatGenerik;
 use App\Models\PemetaanObat;
@@ -378,7 +379,7 @@ class PemetaanObatController extends Controller
     // Import Excel (single sheet + current generik + grouping)
     // ------------------------------------------------------------------
 
-    public function importTemplate()
+public function importTemplate()
     {
         $spreadsheet = new Spreadsheet;
         $sheet = $spreadsheet->getActiveSheet();
@@ -402,6 +403,49 @@ class PemetaanObatController extends Controller
         ]);
     }
 
+    public function importLogIndex()
+    {
+        $logList = ImportLog::with('user')->orderByDesc('created_at')->get();
+
+        $logRows = $logList->map(function (ImportLog $log) {
+            $status = $log->status;
+            $labels = [
+                ImportLog::STATUS_SUCCESS => ['Berhasil', 'bg-emerald-100 text-emerald-700'],
+                ImportLog::STATUS_WARNING => ['Peringatan', 'bg-amber-100 text-amber-700'],
+                ImportLog::STATUS_ERROR => ['Gagal', 'bg-red-100 text-red-700'],
+            ];
+            [$statusLabel, $statusColor] = $labels[$status] ?? [$status, 'bg-gray-100 text-gray-600'];
+
+            return [
+                'id' => $log->id,
+                'waktu' => $log->created_at?->format('d M Y H:i:s'),
+                'file' => $log->file_name,
+                'user' => $log->user?->name ?: $log->user?->username ?: '-',
+                'status' => $statusLabel,
+                'status_color' => $statusColor,
+                'total' => $log->total,
+                'imported' => $log->imported,
+                'skipped' => $log->skipped,
+                'failed' => $log->failed,
+                'message' => $log->errors ? implode(' | ', $log->errors) : '-',
+            ];
+        })->values()->all();
+
+        $logColumns = [
+            ['key' => 'waktu', 'label' => 'Waktu'],
+            ['key' => 'file', 'label' => 'File'],
+            ['key' => 'user', 'label' => 'User'],
+            ['key' => 'status', 'label' => 'Status'],
+            ['key' => 'total', 'label' => 'Total'],
+            ['key' => 'imported', 'label' => 'Import'],
+            ['key' => 'skipped', 'label' => 'Skipped'],
+            ['key' => 'failed', 'label' => 'Failed'],
+            ['key' => 'message', 'label' => 'Pesan Error / Keterangan'],
+        ];
+
+        return view('pemetaan-obat.import-log', compact('logRows', 'logColumns'));
+    }
+
     public function importPreview(Request $request)
     {
         $validator = Validator::make($request->all(), [
@@ -413,17 +457,38 @@ class PemetaanObatController extends Controller
         ]);
 
         if ($validator->fails()) {
+            $this->recordImportLog(
+                ImportLog::STATUS_ERROR,
+                $request->file('file')?->getClientOriginalName() ?: 'import.xlsx',
+                [],
+                $validator->errors()->all()
+            );
+
             return redirect()->route('pemetaan-obat.index')->withErrors($validator);
         }
 
         try {
             $parsed = $this->parseImportFile($request->file('file'));
         } catch (\Throwable $e) {
+            $this->recordImportLog(
+                ImportLog::STATUS_ERROR,
+                $request->file('file')->getClientOriginalName(),
+                [],
+                ['Gagal membaca file Excel: '.$e->getMessage()]
+            );
+
             return redirect()->route('pemetaan-obat.index')
                 ->with('error', 'Gagal membaca file Excel: '.$e->getMessage());
         }
 
         if (! empty($parsed['errors'])) {
+            $this->recordImportLog(
+                ImportLog::STATUS_ERROR,
+                $request->file('file')->getClientOriginalName(),
+                [],
+                $parsed['errors']
+            );
+
             return redirect()->route('pemetaan-obat.index')
                 ->with('error', 'Import gagal: '.implode(' ', $parsed['errors']));
         }
@@ -432,6 +497,13 @@ class PemetaanObatController extends Controller
         $built = $this->buildImportRows($grouped);
 
         if ($built['summary']['total'] === 0) {
+            $this->recordImportLog(
+                ImportLog::STATUS_ERROR,
+                $request->file('file')->getClientOriginalName(),
+                [],
+                ['File tidak memiliki data.']
+            );
+
             return redirect()->route('pemetaan-obat.index')
                 ->with('error', 'File tidak memiliki data.');
         }
@@ -445,6 +517,7 @@ class PemetaanObatController extends Controller
         copy($request->file('file')->getPathname(), $tempDir.'/'.$basename);
 
         $request->session()->put('import_temp_file', $basename);
+        $request->session()->put('import_temp_name', $request->file('file')->getClientOriginalName());
 
         return view('pemetaan-obat.import-preview', [
             'groups' => $built['groups'],
@@ -454,11 +527,14 @@ class PemetaanObatController extends Controller
         ]);
     }
 
-    public function importConfirm(Request $request)
+public function importConfirm(Request $request)
     {
         $tempFileName = $request->session()->pull('import_temp_file');
+        $tempFileNameOriginal = $request->session()->pull('import_temp_name', 'import.xlsx');
 
         if (! $tempFileName || ! preg_match('/^import_pemetaan_obat_[a-f0-9]{32}\.xlsx$/', $tempFileName)) {
+            $this->recordImportLog(ImportLog::STATUS_ERROR, $tempFileNameOriginal, [], ['Sesi import tidak valid.']);
+
             return redirect()->route('pemetaan-obat.index')
                 ->with('error', 'Sesi import tidak valid. Silakan upload ulang.');
         }
@@ -466,6 +542,8 @@ class PemetaanObatController extends Controller
         $tempPath = Storage::disk('local')->path('import-temp').'/'.$tempFileName;
 
         if (! file_exists($tempPath)) {
+            $this->recordImportLog(ImportLog::STATUS_ERROR, $tempFileNameOriginal, [], ['File sementara tidak ditemukan.']);
+
             return redirect()->route('pemetaan-obat.index')
                 ->with('error', 'File sementara tidak ditemukan. Silakan upload ulang.');
         }
@@ -474,6 +552,7 @@ class PemetaanObatController extends Controller
             $parsed = $this->parseImportFile($tempPath);
         } catch (\Throwable $e) {
             @unlink($tempPath);
+            $this->recordImportLog(ImportLog::STATUS_ERROR, $tempFileNameOriginal, [], ['Gagal membaca file: '.$e->getMessage()]);
 
             return redirect()->route('pemetaan-obat.index')
                 ->with('error', 'Gagal membaca file: '.$e->getMessage());
@@ -481,6 +560,7 @@ class PemetaanObatController extends Controller
 
         if (! empty($parsed['errors'])) {
             @unlink($tempPath);
+            $this->recordImportLog(ImportLog::STATUS_ERROR, $tempFileNameOriginal, [], $parsed['errors']);
 
             return redirect()->route('pemetaan-obat.index')
                 ->with('error', 'Import gagal: '.implode(' ', $parsed['errors']));
@@ -491,6 +571,7 @@ class PemetaanObatController extends Controller
 
         if ($built['summary']['total'] === 0) {
             @unlink($tempPath);
+            $this->recordImportLog(ImportLog::STATUS_ERROR, $tempFileNameOriginal, [], ['File tidak memiliki data.']);
 
             return redirect()->route('pemetaan-obat.index')
                 ->with('error', 'File tidak memiliki data.');
@@ -504,12 +585,24 @@ class PemetaanObatController extends Controller
         } catch (\Throwable $e) {
             DB::rollBack();
             @unlink($tempPath);
+            $this->recordImportLog(
+                ImportLog::STATUS_ERROR,
+                $tempFileNameOriginal,
+                ['total' => $built['summary']['total']],
+                ['Terjadi kesalahan saat import. Data dibatalkan seluruhnya: '.$e->getMessage()]
+            );
 
             return redirect()->route('pemetaan-obat.index')
                 ->with('error', 'Terjadi kesalahan saat import. Data dibatalkan seluruhnya: '.$e->getMessage());
         }
 
         @unlink($tempPath);
+
+        $this->recordImportLog(
+            $result['failed'] > 0 ? ImportLog::STATUS_WARNING : ImportLog::STATUS_SUCCESS,
+            $tempFileNameOriginal,
+            $result
+        );
 
         $message = 'Import berhasil. Data diproses: '.$result['total']
             .'. Berhasil: '.$result['imported']
@@ -521,6 +614,24 @@ class PemetaanObatController extends Controller
         }
 
         return redirect()->route('pemetaan-obat.index')->with('success', $message);
+    }
+
+    private function recordImportLog(string $status, string $fileName, array $counts, array $errors = []): void
+    {
+        try {
+            ImportLog::create([
+                'user_id' => auth()->id(),
+                'file_name' => $fileName,
+                'status' => $status,
+                'total' => $counts['total'] ?? 0,
+                'imported' => $counts['imported'] ?? 0,
+                'skipped' => $counts['skipped'] ?? 0,
+                'failed' => $counts['failed'] ?? 0,
+                'errors' => $errors ?: null,
+            ]);
+        } catch (\Throwable) {
+            // Logging tidak boleh mengganggu alur import.
+        }
     }
 
     private function parseImportFile($file): array

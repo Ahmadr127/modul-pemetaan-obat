@@ -112,6 +112,13 @@ return [
                 'route_pattern' => 'pemetaan-obat.brand',
                 'permission' => 'manage_pemetaan_obat',
             ],
+            [
+                'label' => 'Log Import',
+                'icon' => 'bi-journal-text',
+                'route' => 'pemetaan-obat.import.log',
+                'route_pattern' => 'pemetaan-obat.import.log',
+                'permission' => 'manage_pemetaan_obat',
+            ],
         ],
     ],
 ];
