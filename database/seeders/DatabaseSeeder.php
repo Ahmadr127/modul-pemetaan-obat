@@ -13,23 +13,30 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
-        // Call RolePermissionSeeder first
+        // Hanya role admin & user beserta permission-nya
         $this->call([
             RolePermissionSeeder::class,
-            OrganizationTypeSeeder::class,
-            OrganizationUnitSeeder::class,
-            // PemetaanObatSeeder::class,
         ]);
 
-        // Create admin user
         $adminRole = \App\Models\Role::where('name', 'admin')->first();
-        
+        $userRole = \App\Models\Role::where('name', 'user')->first();
+
+        // Akun admin
         User::factory()->create([
             'name' => 'Administrator',
             'username' => 'admin',
             'email' => 'admin@example.com',
             'role_id' => $adminRole->id,
-            'password' => bcrypt('rsazra'), // Change this to a secure password
+            'password' => bcrypt('rsazra'),
+        ]);
+
+        // Akun user biasa
+        User::factory()->create([
+            'name' => 'Pengguna Biasa',
+            'username' => 'user',
+            'email' => 'user@example.com',
+            'role_id' => $userRole->id,
+            'password' => bcrypt('rsazra'),
         ]);
     }
 }
