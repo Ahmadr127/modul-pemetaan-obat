@@ -13,9 +13,8 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Str;
 use Illuminate\Testing\TestResponse;
-use PhpOffice\PhpSpreadsheet\IOFactory;
-use PhpOffice\PhpSpreadsheet\Spreadsheet;
-use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
+use Shuchkin\SimpleXLSX;
+use Shuchkin\SimpleXLSXGen;
 use Tests\TestCase;
 
 class PemetaanObatImportTest extends TestCase
@@ -58,21 +57,15 @@ class PemetaanObatImportTest extends TestCase
 
     private function makeWorkbook(array $rows, ?array $headers = null): string
     {
-        $spreadsheet = new Spreadsheet;
-        $worksheet = $spreadsheet->getActiveSheet();
-        $worksheet->setTitle('Pemetaan Obat');
-        $worksheet->fromArray([$headers ?? self::HEADERS], null, 'A1');
+        $data = [$headers ?? self::HEADERS];
 
-        foreach ($rows as $r => $row) {
-            foreach ($row as $c => $value) {
-                $col = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($c + 1);
-                $worksheet->setCellValueExplicit($col.($r + 2), (string) $value, \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING);
-            }
+        foreach ($rows as $row) {
+            $data[] = $row;
         }
 
-        $writer = new Xlsx($spreadsheet);
+        $xlsx = SimpleXLSXGen::fromArray(SimpleXLSXGen::rawArray($data), 'Pemetaan Obat');
         $path = sys_get_temp_dir().'/pmo_'.uniqid().'.xlsx';
-        $writer->save($path);
+        $xlsx->saveAs($path);
 
         return $path;
     }
@@ -84,21 +77,18 @@ class PemetaanObatImportTest extends TestCase
 
     private function makeOldTwoSheetWorkbook(): string
     {
-        $spreadsheet = new Spreadsheet;
+        $xlsx = SimpleXLSXGen::fromArray([
+            ['kode_obat', 'nama_generik', 'harga_jual'],
+            ['OBT00006', 'ACETYLCISTEIN', 298202],
+        ], 'OBAT_GENERIK');
 
-        $generikSheet = $spreadsheet->getActiveSheet();
-        $generikSheet->setTitle('OBAT_GENERIK');
-        $generikSheet->fromArray([['kode_obat', 'nama_generik', 'harga_jual']], null, 'A1');
-        $generikSheet->fromArray([['OBT00006', 'ACETYLCISTEIN', 298202]], null, 'A2');
+        $xlsx->addSheet([
+            ['kode_generik', 'kode_brand', 'nama_brand', 'harga_brand'],
+            ['OBT00006', 'OBT0119', 'RESFAR', 298202],
+        ], 'PEMETAAN_BRAND');
 
-        $brandSheet = $spreadsheet->createSheet();
-        $brandSheet->setTitle('PEMETAAN_BRAND');
-        $brandSheet->fromArray([['kode_generik', 'kode_brand', 'nama_brand', 'harga_brand']], null, 'A1');
-        $brandSheet->fromArray([['OBT00006', 'OBT0119', 'RESFAR', 298202]], null, 'A2');
-
-        $writer = new Xlsx($spreadsheet);
         $path = sys_get_temp_dir().'/pmo_old_'.uniqid().'.xlsx';
-        $writer->save($path);
+        $xlsx->saveAs($path);
 
         return $path;
     }
@@ -761,12 +751,14 @@ class PemetaanObatImportTest extends TestCase
         $path = sys_get_temp_dir().'/pmo_tpl_'.uniqid().'.xlsx';
         file_put_contents($path, $response->streamedContent());
 
-        $spreadsheet = IOFactory::load($path);
-        $sheetNames = $spreadsheet->getSheetNames();
+        $xlsx = SimpleXLSX::parse($path);
+        $this->assertInstanceOf(SimpleXLSX::class, $xlsx);
+
+        $sheetNames = $xlsx->sheetNames();
 
         $this->assertCount(1, $sheetNames);
         $this->assertSame('Pemetaan Obat', $sheetNames[0]);
-        $this->assertSame(self::HEADERS, array_slice($spreadsheet->getActiveSheet()->toArray(null, false, false)[0], 0, 6));
+        $this->assertSame(self::HEADERS, array_slice($xlsx->rows(0)[0], 0, 6));
     }
 
     // ------------------------------------------------------------------

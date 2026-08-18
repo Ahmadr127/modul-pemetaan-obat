@@ -11,10 +11,9 @@ use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
-use PhpOffice\PhpSpreadsheet\IOFactory;
-use PhpOffice\PhpSpreadsheet\Spreadsheet;
-use PhpOffice\PhpSpreadsheet\Style\Fill;
-use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
+use Shuchkin\SimpleXLS;
+use Shuchkin\SimpleXLSX;
+use Shuchkin\SimpleXLSXGen;
 
 class PemetaanObatController extends Controller
 {
@@ -379,25 +378,27 @@ class PemetaanObatController extends Controller
     // Import Excel (single sheet + current generik + grouping)
     // ------------------------------------------------------------------
 
-public function importTemplate()
+    public function importTemplate()
     {
-        $spreadsheet = new Spreadsheet;
-        $sheet = $spreadsheet->getActiveSheet();
-        $sheet->setTitle('Pemetaan Obat');
-        $sheet->fromArray([array_values(self::HEADER_LABELS)], null, 'A1');
-        $this->styleHeaderRow($sheet, 1, count(self::HEADER_LABELS));
+        $headerRow = array_map(
+            fn (string $label) => '<b><style color="#FFFFFF" bgcolor="#007774">'.$label.'</style></b>',
+            array_values(self::HEADER_LABELS)
+        );
+        $headerRow[7] = '<i><style color="#64748B" font-size="9">Petunjuk: baris 1 adalah header. Isi data mulai baris 2. Kode Generik wajib diisi pada baris pertama sebuah grup; kosongkan pada baris brand lanjutan (brand mengikuti generik aktif). Harga harus berupa angka. Jangan hapus kolom.</style></i>';
 
-        foreach (['A', 'B', 'C', 'D', 'E', 'F'] as $column) {
-            $sheet->getColumnDimension($column)->setAutoSize(true);
-        }
+        $xlsx = SimpleXLSXGen::fromArray([$headerRow], 'Pemetaan Obat')
+            ->setColWidth(1, 24)
+            ->setColWidth(2, 32)
+            ->setColWidth(3, 16)
+            ->setColWidth(4, 14)
+            ->setColWidth(5, 24)
+            ->setColWidth(6, 16)
+            ->setColWidth(8, 90);
 
-        $sheet->setCellValue('H1', 'Petunjuk: baris 1 adalah header. Isi data mulai baris 2. Kode Generik wajib diisi pada baris pertama sebuah grup; kosongkan pada baris brand lanjutan (brand mengikuti generik aktif). Harga harus berupa angka. Jangan hapus kolom.');
-        $sheet->getStyle('H1')->getFont()->setItalic(true)->setSize(9)->getColor()->setRGB('64748B');
+        $data = (string) $xlsx;
 
-        $writer = new Xlsx($spreadsheet);
-
-        return response()->streamDownload(function () use ($writer) {
-            $writer->save('php://output');
+        return response()->streamDownload(function () use ($data) {
+            echo $data;
         }, 'template-import-pemetaan-obat.xlsx', [
             'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         ]);
@@ -528,7 +529,7 @@ public function importTemplate()
         ]);
     }
 
-public function importConfirm(Request $request)
+    public function importConfirm(Request $request)
     {
         $tempFileName = $request->session()->pull('import_temp_file');
         $tempFileNameOriginal = $request->session()->pull('import_temp_name', 'import.xlsx');
@@ -642,14 +643,25 @@ public function importConfirm(Request $request)
     {
         $path = $file instanceof UploadedFile ? $file->getPathname() : $file;
 
-        $spreadsheet = IOFactory::load($path);
+        $fh = fopen($path, 'rb');
+        $magic = $fh ? fread($fh, 4) : '';
+        if ($fh) {
+            fclose($fh);
+        }
+        $isXls = $magic === "\xD0\xCF\x11\xE0"; // OLE2 compound document (BIFF .xls)
+
+        $book = $isXls ? SimpleXLS::parse($path) : SimpleXLSX::parse($path);
+        if (! $book) {
+            throw new \RuntimeException($isXls ? SimpleXLS::parseError() : SimpleXLSX::parseError());
+        }
 
         $headerMap = null;
         $rawRows = [];
         $bestMissing = array_values(self::HEADER_LABELS);
+        $sheetCount = $isXls ? count($book->sheetNames()) : $book->sheetsCount();
 
-        foreach ($spreadsheet->getAllSheets() as $sheet) {
-            $rows = $sheet->toArray(null, false, false);
+        for ($i = 0; $i < $sheetCount; $i++) {
+            $rows = $book->rows($i);
             if (empty($rows)) {
                 continue;
             }
@@ -825,6 +837,7 @@ public function importConfirm(Request $request)
                     'nama' => $namaBrand,
                     'errors' => ['Kode generik kosong dan belum ada generik aktif (baris brand tanpa parent generik).'],
                 ];
+
                 continue;
             }
 
@@ -1012,7 +1025,7 @@ public function importConfirm(Request $request)
                 if ($brand['status'] === 'duplicate') {
                     $duplicateCount++;
                 }
-if ($brand['status'] === 'error' && $group['status'] !== 'error') {
+                if ($brand['status'] === 'error' && $group['status'] !== 'error') {
                     $brandErrorCount++;
                 }
                 if (count($brand['warnings']) > 0) {
@@ -1036,7 +1049,7 @@ if ($brand['status'] === 'error' && $group['status'] !== 'error') {
         return compact('groups', 'orphans', 'summary');
     }
 
-private function performImport(array $built): array
+    private function performImport(array $built): array
     {
         $groups = $built['groups'];
         $orphans = $built['orphans'];
@@ -1191,16 +1204,6 @@ private function performImport(array $built): array
         }
 
         return implode(' | ', $parts);
-    }
-
-    private function styleHeaderRow(\PhpOffice\PhpSpreadsheet\Worksheet\Worksheet $sheet, int $row, int $count): void
-    {
-        $lastColumn = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($count);
-
-        $sheet->getStyle('A'.$row.':'.$lastColumn.$row)->applyFromArray([
-            'font' => ['bold' => true, 'color' => ['rgb' => 'FFFFFF'], 'size' => 11],
-            'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => '007774']],
-        ]);
     }
 
     protected function drugData(array $validated): array
